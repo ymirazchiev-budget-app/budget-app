@@ -38,12 +38,38 @@ const supabase = supabase.createClient(
 let user;
 
 async function login(){
-  let email=document.getElementById("email").value;
-  let pass=document.getElementById("pass").value;
+let email=document.getElementById("email").value;
+let pass=document.getElementById("pass").value;
 
-  let { data, error } = await supabase.auth.signInWithPassword({
-    email, password:pass
-  });
+let { data, error } = await supabase.auth.signInWithPassword({
+email, password:pass
+});
+
+if(error){
+console.log(error);
+
+```
+let res = await supabase.auth.signUp({
+  email, password: pass
+});
+
+if(res.error){
+  alert("Грешка: " + res.error.message);
+  return;
+}
+
+alert("Създаден акаунт! Влез отново.");
+return;
+```
+
+}
+
+user = data.user;
+
+document.getElementById("app").style.display="block";
+load();
+}
+
 
   if(error){
     let res = await supabase.auth.signUp({
