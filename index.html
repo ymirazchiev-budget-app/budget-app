@@ -4,26 +4,21 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
-<title>Budget FINAL MAX</title>
+<title>Budget MAX+</title>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
 body { margin:0; font-family:Arial; background:#0f172a; color:white; }
-.header { padding:20px; }
-.balance { font-size:34px; font-weight:bold; }
+.header { padding:15px; }
+.balance { font-size:30px; }
 
-button {
-  padding:10px;
+button, select {
+  padding:8px;
   margin:5px;
   border:none;
-  border-radius:10px;
+  border-radius:8px;
 }
-
-.income { background:#22c55e; }
-.expense { background:#ef4444; }
-.bonus { background:#3b82f6; }
 
 .card {
   background:#1e293b;
@@ -46,21 +41,22 @@ button {
 <div id="app" style="display:none;">
 
 <div class="header">
-<h2>💰 Budget</h2>
+<h2>💰 Budget MAX+</h2>
+
+<select id="profile" onchange="switchProfile()"></select> <button onclick="addProfile()">+ Профил</button>
+
 <div class="balance" id="balance">0 €</div>
-<div id="warning"></div>
 </div>
 
-<button class="income" onclick="add('income')">+ Доход</button> <button class="expense" onclick="add('expense')">- Разход</button> <button class="bonus" onclick="add('bonus')">🎁 Бонус</button>
+<button onclick="add('income')">+ Доход</button> <button onclick="add('expense')">- Разход</button> <button onclick="add('bonus')">🎁 Бонус</button>
 
 <div class="card">
 <canvas id="chart"></canvas>
 </div>
 
 <div class="card">
-Цел: <input id="goal" type="number" placeholder="10000">
-<button onclick="saveGoal()">Запази</button>
-<div id="goalStatus"></div>
+<h3>📊 Най-голям разход:</h3>
+<div id="topCategory"></div>
 </div>
 
 <div id="list"></div>
@@ -69,36 +65,70 @@ button {
 
 <script>
 let PIN="9888";
-let data=JSON.parse(localStorage.getItem("final"))||[];
-let goal=localStorage.getItem("goal")||0;
+
+let profiles = JSON.parse(localStorage.getItem("profiles")) || {
+  "Лични": []
+};
+
+let current = localStorage.getItem("currentProfile") || "Лични";
 
 function login(){
   if(document.getElementById("pin").value===PIN){
     document.getElementById("login").style.display="none";
     document.getElementById("app").style.display="block";
+    loadProfiles();
     update();
   }
 }
 
 function save(){
-  localStorage.setItem("final",JSON.stringify(data));
+  localStorage.setItem("profiles", JSON.stringify(profiles));
+  localStorage.setItem("currentProfile", current);
 }
 
-function saveGoal(){
-  goal=document.getElementById("goal").value;
-  localStorage.setItem("goal",goal);
+function loadProfiles(){
+  let sel=document.getElementById("profile");
+  sel.innerHTML="";
+  Object.keys(profiles).forEach(p=>{
+    let o=document.createElement("option");
+    o.value=p;
+    o.innerText=p;
+    sel.appendChild(o);
+  });
+  sel.value=current;
+}
+
+function switchProfile(){
+  current=document.getElementById("profile").value;
+  save();
+  update();
+}
+
+function addProfile(){
+  let name=prompt("Име на профил:");
+  if(!name) return;
+  profiles[name]=[];
+  current=name;
+  save();
+  loadProfiles();
   update();
 }
 
 function update(){
-  let bal=0,inc=0,exp=0;
+  let data=profiles[current];
+  let bal=0, inc=0, exp=0;
+  let cats={};
+
   let list=document.getElementById("list");
   list.innerHTML="";
 
   data.forEach((d,i)=>{
     bal+=d.amount;
     if(d.amount>0) inc+=d.amount;
-    else exp+=d.amount;
+    else {
+      exp+=d.amount;
+      cats[d.name]=(cats[d.name]||0)+Math.abs(d.amount);
+    }
 
     let div=document.createElement("div");
     div.className="card";
@@ -112,16 +142,18 @@ function update(){
 
   document.getElementById("balance").innerText=bal+" €";
 
-  if(bal<0){
-    document.getElementById("warning").innerText="⚠️ В МИНУС СИ";
-  } else {
-    document.getElementById("warning").innerText="";
+  // най-голям разход
+  let top="";
+  let max=0;
+  for(let c in cats){
+    if(cats[c]>max){
+      max=cats[c];
+      top=c;
+    }
   }
 
-  if(goal>0){
-    document.getElementById("goalStatus").innerText=
-      "Напредък: "+Math.round((bal/goal)*100)+"%";
-  }
+  document.getElementById("topCategory").innerText =
+    top ? top + " ("+max+" €)" : "няма";
 
   drawChart(inc,Math.abs(exp));
 }
@@ -132,13 +164,15 @@ function add(type){
 
   if(type==="expense") val=-val;
 
-  data.push({name:name||type,amount:val});
-  save(); update();
+  profiles[current].push({name:name||type,amount:val});
+  save();
+  update();
 }
 
 function del(i){
-  data.splice(i,1);
-  save(); update();
+  profiles[current].splice(i,1);
+  save();
+  update();
 }
 
 let chart;
@@ -158,8 +192,6 @@ function drawChart(inc,exp){
     }
   });
 }
-
-update();
 </script>
 
 </body>
