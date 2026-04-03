@@ -4,11 +4,12 @@
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 
 <style>
 body { font-family:Arial; background:#0f172a; color:white; text-align:center; }
 button { padding:10px; margin:5px; }
+input { padding:10px; margin:5px; }
 </style>
 
 </head>
@@ -26,145 +27,121 @@ button { padding:10px; margin:5px; }
 
 <button onclick="add('income')">+ Доход</button> <button onclick="add('expense')">- Разход</button>
 
+<div id="list"></div>
 <div id="analysis"></div>
 </div>
 
 <script>
-const supabase = supabase.createClient(
-"https://ipihscvyyxetkiajjllg.supabase.co",
-"sb_publishable_r7Bgf2u5ZK30-DQVHPSHHQ_xgnsXY2x"
+const client = supabase.createClient(
+  "https://ipihscvyyxetkiajjllg.supabase.co",
+  "sb_publishable_r7Bgf2u5ZK30-DQVHPSHHQ_xgnsXY2x"
 );
 
 let user;
 
 async function login(){
-let email=document.getElementById("email").value;
-let pass=document.getElementById("pass").value;
+  let email=document.getElementById("email").value;
+  let pass=document.getElementById("pass").value;
 
-let { data, error } = await supabase.auth.signInWithPassword({
-email, password:pass
-});
-
-if(error){
-console.log(error);
-
-```
-let res = await supabase.auth.signUp({
-  email, password: pass
-});
-
-if(res.error){
-  alert("Грешка: " + res.error.message);
-  return;
-}
-
-alert("Създаден акаунт! Влез отново.");
-return;
-```
-
-}
-
-user = data.user;
-
-document.getElementById("app").style.display="block";
-load();
-}
-
+  let { data, error } = await client.auth.signInWithPassword({
+    email, password:pass
+  });
 
   if(error){
-    let res = await supabase.auth.signUp({
+    let res = await client.auth.signUp({
       email, password: pass
     });
-    user = res.data.user;
-  } else {
-    user = data.user;
+
+    if(res.error){
+      alert("Грешка: " + res.error.message);
+      return;
+    }
+
+    alert("Акаунт създаден! Натисни Login пак.");
+    return;
   }
+
+  user = data.user;
 
   document.getElementById("app").style.display="block";
   load();
 }
 
 async function load(){
-  let { data } = await supabase
+  let { data } = await client
     .from("transactions")
     .select("*")
     .eq("user_id", user.id);
 
-  render(data);
+  render(data || []);
 }
 
 function render(data){
-let bal=0;
-let list=document.getElementById("list");
-list.innerHTML="";
+  let bal=0;
+  let list=document.getElementById("list");
+  list.innerHTML="";
 
-let categories = {};
+  let categories = {};
 
-data.forEach(d=>{
-let amount = Number(d.amount);
-bal += amount;
+  data.forEach(d=>{
+    let amount = Number(d.amount);
+    bal += amount;
 
-```
-// история
-let div=document.createElement("div");
-div.innerText = d.name + " " + amount + " €";
-list.appendChild(div);
+    let div=document.createElement("div");
+    div.innerText = d.name + " " + amount + " €";
+    list.appendChild(div);
 
-// само разходи в анализ
-if(amount < 0){
-  let cat = d.name.toLowerCase();
+    if(amount < 0){
+      let cat = d.name.toLowerCase();
 
-  if(!categories[cat]){
-    categories[cat] = 0;
+      if(!categories[cat]){
+        categories[cat] = 0;
+      }
+
+      categories[cat] += Math.abs(amount);
+    }
+  });
+
+  document.getElementById("balance").innerText = bal.toFixed(2) + " €";
+
+  let analysisDiv = document.getElementById("analysis");
+  analysisDiv.innerHTML = "<h3>📊 Разходи по категории:</h3>";
+
+  let topCat = "";
+  let max = 0;
+
+  for(let c in categories){
+    let val = categories[c];
+
+    let p = document.createElement("div");
+    p.innerText = c + ": " + val.toFixed(2) + " €";
+    analysisDiv.appendChild(p);
+
+    if(val > max){
+      max = val;
+      topCat = c;
+    }
   }
 
-  categories[cat] += Math.abs(amount);
-}
-```
-
-});
-
-document.getElementById("balance").innerText = bal + " €";
-
-// 📊 анализ
-let analysisDiv = document.getElementById("analysis");
-analysisDiv.innerHTML = "<h3>📊 Разходи по категории:</h3>";
-
-let topCat = "";
-let max = 0;
-
-for(let c in categories){
-let val = categories[c];
-
-```
-let p = document.createElement("div");
-p.innerText = c + ": " + val.toFixed(2) + " €";
-analysisDiv.appendChild(p);
-
-if(val > max){
-  max = val;
-  topCat = c;
-}
-```
-
-}
-
-// 🥇 топ категория
-let top = document.createElement("div");
-top.innerHTML = "<br><b>Най-много харчиш за: " + topCat + " (" + max.toFixed(2) + " €)</b>";
-analysisDiv.appendChild(top);
+  if(topCat){
+    let top = document.createElement("div");
+    top.innerHTML = "<br><b>Най-много харчиш за: " + topCat + " (" + max.toFixed(2) + " €)</b>";
+    analysisDiv.appendChild(top);
+  }
 }
 
 async function add(type){
   let name=prompt("Категория:");
   let val=parseFloat(prompt("Сума:"));
 
+  if(isNaN(val)) return;
+
   if(type==="expense") val=-val;
 
-  await supabase.from("transactions").insert({
+  await client.from("transactions").insert({
     user_id:user.id,
     profile:"Лични",
-    name:name,
+    name:name || type,
     amount:val
   });
 
