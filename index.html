@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+
+<title>Budget FINAL MAX</title>
+
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+
+<style>
+body { margin:0; font-family:Arial; background:#0f172a; color:white; }
+.header { padding:20px; }
+.balance { font-size:34px; font-weight:bold; }
+
+button {
+  padding:10px;
+  margin:5px;
+  border:none;
+  border-radius:10px;
+}
+
+.income { background:#22c55e; }
+.expense { background:#ef4444; }
+.bonus { background:#3b82f6; }
+
+.card {
+  background:#1e293b;
+  margin:10px;
+  padding:10px;
+  border-radius:10px;
+}
+</style>
+
+</head>
+
+<body>
+
+<div id="login">
+<h2>🔐 PIN</h2>
+<input type="password" id="pin">
+<button onclick="login()">Вход</button>
+</div>
+
+<div id="app" style="display:none;">
+
+<div class="header">
+<h2>💰 Budget</h2>
+<div class="balance" id="balance">0 €</div>
+<div id="warning"></div>
+</div>
+
+<button class="income" onclick="add('income')">+ Доход</button> <button class="expense" onclick="add('expense')">- Разход</button> <button class="bonus" onclick="add('bonus')">🎁 Бонус</button>
+
+<div class="card">
+<canvas id="chart"></canvas>
+</div>
+
+<div class="card">
+Цел: <input id="goal" type="number" placeholder="10000">
+<button onclick="saveGoal()">Запази</button>
+<div id="goalStatus"></div>
+</div>
+
+<div id="list"></div>
+
+</div>
+
+<script>
+let PIN="1234";
+let data=JSON.parse(localStorage.getItem("final"))||[];
+let goal=localStorage.getItem("goal")||0;
+
+function login(){
+  if(document.getElementById("pin").value===PIN){
+    document.getElementById("login").style.display="none";
+    document.getElementById("app").style.display="block";
+    update();
+  }
+}
+
+function save(){
+  localStorage.setItem("final",JSON.stringify(data));
+}
+
+function saveGoal(){
+  goal=document.getElementById("goal").value;
+  localStorage.setItem("goal",goal);
+  update();
+}
+
+function update(){
+  let bal=0,inc=0,exp=0;
+  let list=document.getElementById("list");
+  list.innerHTML="";
+
+  data.forEach((d,i)=>{
+    bal+=d.amount;
+    if(d.amount>0) inc+=d.amount;
+    else exp+=d.amount;
+
+    let div=document.createElement("div");
+    div.className="card";
+    div.innerHTML=`
+      ${d.name}<br>
+      <b style="color:${d.amount<0?'red':'lightgreen'}">${d.amount} €</b>
+      <button onclick="del(${i})">❌</button>
+    `;
+    list.appendChild(div);
+  });
+
+  document.getElementById("balance").innerText=bal+" €";
+
+  if(bal<0){
+    document.getElementById("warning").innerText="⚠️ В МИНУС СИ";
+  } else {
+    document.getElementById("warning").innerText="";
+  }
+
+  if(goal>0){
+    document.getElementById("goalStatus").innerText=
+      "Напредък: "+Math.round((bal/goal)*100)+"%";
+  }
+
+  drawChart(inc,Math.abs(exp));
+}
+
+function add(type){
+  let name=prompt("Категория:");
+  let val=parseFloat(prompt("Сума:"));
+
+  if(type==="expense") val=-val;
+
+  data.push({name:name||type,amount:val});
+  save(); update();
+}
+
+function del(i){
+  data.splice(i,1);
+  save(); update();
+}
+
+let chart;
+
+function drawChart(inc,exp){
+  let ctx=document.getElementById("chart");
+  if(chart) chart.destroy();
+
+  chart=new Chart(ctx,{
+    type:'doughnut',
+    data:{
+      labels:['Доход','Разход'],
+      datasets:[{
+        data:[inc,exp],
+        backgroundColor:['#22c55e','#ef4444']
+      }]
+    }
+  });
+}
+
+update();
+</script>
+
+</body>
+</html>
