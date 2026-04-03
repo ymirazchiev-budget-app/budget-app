@@ -68,19 +68,65 @@ async function load(){
 }
 
 function render(data){
-  let bal=0;
-  let list=document.getElementById("list");
-  list.innerHTML="";
+let bal=0;
+let list=document.getElementById("list");
+list.innerHTML="";
 
-  data.forEach(d=>{
-    bal+=Number(d.amount);
+let categories = {};
 
-    let div=document.createElement("div");
-    div.innerText=d.name+" "+d.amount+" €";
-    list.appendChild(div);
-  });
+data.forEach(d=>{
+let amount = Number(d.amount);
+bal += amount;
 
-  document.getElementById("balance").innerText=bal+" €";
+```
+// история
+let div=document.createElement("div");
+div.innerText = d.name + " " + amount + " €";
+list.appendChild(div);
+
+// само разходи в анализ
+if(amount < 0){
+  let cat = d.name.toLowerCase();
+
+  if(!categories[cat]){
+    categories[cat] = 0;
+  }
+
+  categories[cat] += Math.abs(amount);
+}
+```
+
+});
+
+document.getElementById("balance").innerText = bal + " €";
+
+// 📊 анализ
+let analysisDiv = document.getElementById("analysis");
+analysisDiv.innerHTML = "<h3>📊 Разходи по категории:</h3>";
+
+let topCat = "";
+let max = 0;
+
+for(let c in categories){
+let val = categories[c];
+
+```
+let p = document.createElement("div");
+p.innerText = c + ": " + val.toFixed(2) + " €";
+analysisDiv.appendChild(p);
+
+if(val > max){
+  max = val;
+  topCat = c;
+}
+```
+
+}
+
+// 🥇 топ категория
+let top = document.createElement("div");
+top.innerHTML = "<br><b>Най-много харчиш за: " + topCat + " (" + max.toFixed(2) + " €)</b>";
+analysisDiv.appendChild(top);
 }
 
 async function add(type){
