@@ -39,7 +39,8 @@ const client = supabase.createClient(
 
 let user;
 
-  window.onload = async () => {
+// AUTO LOGIN
+window.onload = async () => {
   const { data } = await client.auth.getSession();
 
   if(data.session){
@@ -48,37 +49,41 @@ let user;
     load();
   }
 };
-  
+
+// LOGIN
 async function login(){
-let email=document.getElementById("email").value;
-let pass=document.getElementById("pass").value;
+  try{
+    let email=document.getElementById("email").value;
+    let pass=document.getElementById("pass").value;
 
-let { data, error } = await client.auth.signInWithPassword({
-email, password:pass
-});
+    if(!email || !pass){
+      alert("Въведи email и парола");
+      return;
+    }
 
-if(error){
-alert("Login грешка: " + error.message);
-return;
-}
+    let { data, error } = await client.auth.signInWithPassword({
+      email, password:pass
+    });
 
-user = data.user;
+    if(error){
+      alert("❌ " + error.message);
+      return;
+    }
 
-document.getElementById("app").style.display="block";
-load();
-}
+    user = data.user;
 
+    document.getElementById("app").style.display="block";
+    load();
 
-    alert("Акаунт създаден! Натисни Login пак.");
-    return;
+    alert("✅ Влезе успешно");
+
+  } catch(e){
+    alert("💥 Грешка: " + e.message);
+    console.log(e);
   }
-
-  user = data.user;
-
-  document.getElementById("app").style.display="block";
-  load();
 }
 
+// LOAD DATA
 async function load(){
   let { data } = await client
     .from("transactions")
@@ -88,6 +93,7 @@ async function load(){
   render(data || []);
 }
 
+// RENDER
 function render(data){
   let bal=0;
   let list=document.getElementById("list");
@@ -142,6 +148,7 @@ function render(data){
   }
 }
 
+// ADD
 async function add(type){
   let name=prompt("Категория:");
   let val=parseFloat(prompt("Сума:"));
@@ -163,3 +170,4 @@ async function add(type){
 
 </body>
 </html>
+
