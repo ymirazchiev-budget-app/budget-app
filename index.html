@@ -1,170 +1,184 @@
 <!DOCTYPE html>
 <html lang="bg">
 <head>
-<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<title>Budget Cloud MAX++</title>
+
 <style>
-body { font-family:Arial; background:#0f172a; color:white; text-align:center; }
-button, input { padding:10px; margin:5px; border-radius:5px; border:none; }
-.card { background:#1e293b; margin:5px; padding:5px; border-radius:5px; }
+body { background:#0f172a; color:white; font-family:Arial; margin:0; }
+.header { padding:20px; }
+.balance { font-size:32px; }
+.card { background:#1e293b; margin:10px; padding:15px; border-radius:12px; }
+button { padding:10px; margin:5px; border:none; border-radius:8px; }
+.green { color:#22c55e; }
+.red { color:#ef4444; }
 </style>
 </head>
+
 <body>
 
-<h2>💰 Budget Cloud MAX++</h2>
-
-<div id="login">
-<input id="email" placeholder="Email">
-<input id="pass" type="password" placeholder="Парола">
+<div id="login" class="card">
+<input id="email" placeholder="email">
+<input id="pass" type="password" placeholder="password">
 <button onclick="login()">Login</button>
 </div>
 
 <div id="app" style="display:none;">
-<h3>Баланс: <span id="balance">0 €</span></h3>
 
-<select id="profile" onchange="switchProfile()"></select>
-<button onclick="addProfile()">+ Профил</button>
+<div class="header">
+<div class="balance" id="balance">0 €</div>
+<div>💎 Бонус: <span id="bonus">0 €</span></div>
+</div>
 
-<br>
-<input id="name" placeholder="Категория">
-<input id="val" placeholder="Сума (1.89)">
+<div class="card" id="monthly"></div>
+
 <button onclick="add('income')">+ Доход</button>
 <button onclick="add('expense')">- Разход</button>
 <button onclick="add('bonus')">🎁 Бонус</button>
 
+<div class="card">
+<canvas id="chart"></canvas>
+</div>
+
 <div id="list"></div>
-<div id="analysis"></div>
-<div><canvas id="chart"></canvas></div>
+
 </div>
 
 <script>
 const client = supabase.createClient(
-  "https://ipihscvyyxetkiajjllg.supabase.co",
-  "sb_publishable_r7Bgf2u5ZK30-DQVHPSHHQ_xgnsXY2x"
+"https://ipihscvyyxetkiajjllg.supabase.co",
+"sb_publishable_r7Bgf2u5ZK30-DQVHPSHHQ_xgnsXY2x"
 );
 
-let user;
-let currentProfile = "Лични";
-let profiles = [currentProfile];
-let chart;
+let user, chart;
+
+window.onload = async ()=>{
+  const { data } = await client.auth.getSession();
+  if(data.session){
+    user = data.session.user;
+    start();
+  }
+};
 
 async function login(){
-  let email=document.getElementById("email").value;
-  let pass=document.getElementById("pass").value;
+  let email=emailEl().value;
+  let pass=passEl().value;
 
-  let { data, error } = await client.auth.signInWithPassword({ email, password:pass });
-  if(error){ alert("Login грешка: "+error.message); return; }
+  let { data, error } = await client.auth.signInWithPassword({email,password:pass});
+  if(error){ alert(error.message); return; }
+
   user = data.user;
+  start();
+}
 
+function start(){
   document.getElementById("login").style.display="none";
   document.getElementById("app").style.display="block";
-
-  loadProfiles();
   load();
 }
 
-function loadProfiles(){
-  let sel=document.getElementById("profile");
-  sel.innerHTML="";
-  profiles.forEach(p=>{
-    let o=document.createElement("option");
-    o.value=p; o.innerText=p;
-    sel.appendChild(o);
-  });
-  sel.value=currentProfile;
-}
-
-function switchProfile(){
-  currentProfile=document.getElementById("profile").value;
-  load();
-}
-
-function addProfile(){
-  let name = prompt("Име на профил:");
-  if(!name) return;
-  profiles.push(name);
-  currentProfile = name;
-  loadProfiles();
-  load();
-}
+function emailEl(){ return document.getElementById("email"); }
+function passEl(){ return document.getElementById("pass"); }
 
 async function load(){
   let { data } = await client
     .from("transactions")
     .select("*")
-    .eq("user_id", user.id)
-    .eq("profile", currentProfile)
-    .order('created_at',{ascending:true});
+    .eq("user_id", user.id);
 
-  render(data || []);
+  render(data||[]);
 }
 
 function render(data){
-  let bal=0, categories={}, monthly={};
-  let list=document.getElementById("list"); list.innerHTML="";
-  data.forEach((d,i)=>{
-    let amount = parseFloat(d.amount); bal += amount;
+  let bal=0, bonus=0, inc=0, exp=0;
+  let list=document.getElementById("list");
+  list.innerHTML="";
 
-    // история
-    let div=document.createElement("div"); div.className="card";
-    div.innerHTML = `${d.name}: <b style="color:${amount<0?'red':'lightgreen'}">${amount.toFixed(2)} €</b>
-      <button onclick="del('${d.id}')">❌</button>`;
+  let monthNow = new Date().getMonth();
+
+  data.forEach(d=>{
+    let amount = Number(d.amount);
+
+    if(d.name==="bonus"){
+      bonus += amount;
+    } else {
+      bal += amount;
+      if(amount>0) inc+=amount;
+      else exp+=Math.abs(amount);
+    }
+
+    // месечен отчет
+    let m = new Date(d.created_at).getMonth();
+    if(m===monthNow){
+      if(amount>0) inc+=0;
+    }
+
+    let div=document.createElement("div");
+    div.className="card";
+    div.innerHTML = `
+      ${d.name} 
+      <b class="${amount<0?'red':'green'}">${amount.toFixed(2)} €</b>
+      <button onclick="del('${d.id}')">❌</button>
+    `;
     list.appendChild(div);
-
-    // анализ по категории
-    let cat=d.name.toLowerCase();
-    if(amount<0) categories[cat] = (categories[cat]||0)+Math.abs(amount);
-
-    // анализ по месеци
-    let m = new Date(d.created_at).toLocaleString('bg-BG',{month:'short', year:'numeric'});
-    monthly[m] = (monthly[m]||0)+amount;
   });
 
-  document.getElementById("balance").innerText = bal.toFixed(2) + " €";
+  document.getElementById("balance").innerText = bal.toFixed(2)+" €";
+  document.getElementById("bonus").innerText = bonus.toFixed(2)+" €";
 
-  // анализ категории
-  let analysisDiv=document.getElementById("analysis");
-  analysisDiv.innerHTML="<h3>📊 Разходи по категории:</h3>";
-  let topCat="", max=0;
-  for(let c in categories){
-    let val=categories[c];
-    let p=document.createElement("div"); p.innerText = c + ": " + val.toFixed(2) + " €";
-    analysisDiv.appendChild(p);
-    if(val>max){ max=val; topCat=c; }
-  }
-  if(topCat){
-    let top=document.createElement("div");
-    top.innerHTML="<b>Най-много харчиш за: "+topCat+" ("+max.toFixed(2)+" €)</b>";
-    analysisDiv.appendChild(top);
-  }
+  // месечен отчет
+  document.getElementById("monthly").innerHTML = `
+    <h3>📊 Този месец</h3>
+    Доход: ${inc.toFixed(2)} € <br>
+    Разход: ${exp.toFixed(2)} € <br>
+    Баланс: ${(inc-exp).toFixed(2)} €
+  `;
 
-  // графика по месеци
+  drawChart(inc,exp);
+}
+
+function drawChart(inc,exp){
   let ctx=document.getElementById("chart");
   if(chart) chart.destroy();
-  chart=new Chart(ctx,{ type:'line', data:{
-    labels:Object.keys(monthly),
-    datasets:[{ label:'Баланс', data:Object.values(monthly), borderColor:'#22c55e', backgroundColor:'#22c55540' }]
-  }, options:{ responsive:true, plugins:{legend:{display:false}}}});
+
+  chart=new Chart(ctx,{
+    type:'doughnut',
+    data:{
+      labels:['Доход','Разход'],
+      datasets:[{
+        data:[inc,exp],
+        backgroundColor:['#22c55e','#ef4444']
+      }]
+    }
+  });
 }
 
 async function add(type){
-  let name=document.getElementById("name").value;
-  let val=parseFloat(document.getElementById("val").value.replace(',','.'));
-  if(isNaN(val)) return;
-  if(type==="expense") val=-val;
+  let name=prompt("Категория:");
+  let val=prompt("Сума:");
 
-  await client.from("transactions").insert([{ user_id:user.id, profile:currentProfile, name:name||type, amount:val, created_at:new Date().toISOString() }]);
-  document.getElementById("name").value=""; document.getElementById("val").value="";
+  val = parseFloat(val.replace(",","."));
+  if(isNaN(val)) return;
+
+  if(type==="expense") val=-val;
+  if(type==="bonus") name="bonus";
+
+  await client.from("transactions").insert({
+    user_id:user.id,
+    name:name||type,
+    amount:val,
+    created_at:new Date().toISOString()
+  });
+
   load();
 }
 
 async function del(id){
-  await client.from("transactions").delete().eq('id', id);
+  await client.from("transactions").delete().eq("id", id);
   load();
 }
 </script>
+
 </body>
 </html>
