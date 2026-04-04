@@ -8,8 +8,9 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
 body { font-family:Arial; background:#0f172a; color:white; text-align:center; margin:0; padding:0; }
-input, button, select { padding:8px; margin:5px; border-radius:6px; border:none; }
-.card { background:#1e293b; margin:10px; padding:10px; border-radius:10px; }
+input, button { padding:8px; margin:5px; border-radius:6px; border:none; }
+.card { background:#1e293b; margin:5px; padding:10px; border-radius:8px; }
+#login, #app { padding:10px; }
 </style>
 </head>
 <body>
@@ -17,31 +18,25 @@ input, button, select { padding:8px; margin:5px; border-radius:6px; border:none;
 <h2>💰 Budget Cloud FINAL MAX++</h2>
 
 <div id="login">
-  <input id="email" placeholder="Email">
-  <input id="pass" type="password" placeholder="Password">
+  <input id="email" placeholder="email">
+  <input id="pass" type="password" placeholder="password">
   <button onclick="login()">Login</button>
 </div>
 
 <div id="app" style="display:none;">
-  <h3>Баланс: <span id="balance">0 €</span></h3>
-
-  <select id="monthFilter" onchange="load()">
-    <option value="">Всички месеци</option>
-  </select>
-
+  <h3 id="balance">0 €</h3>
+  <select id="profile" onchange="switchProfile()"></select>
+  <button onclick="addProfile()">+ Профил</button>
+  <br>
   <button onclick="add('income')">+ Доход</button>
   <button onclick="add('expense')">- Разход</button>
+  <button onclick="add('bonus')">🎁 Бонус</button>
+
+  <div class="card">
+    <canvas id="chart"></canvas>
+  </div>
 
   <div id="list"></div>
-
-  <div class="card">
-    <canvas id="categoryChart"></canvas>
-  </div>
-
-  <div class="card">
-    <canvas id="monthlyChart"></canvas>
-  </div>
-
   <div id="analysis"></div>
 </div>
 
@@ -52,7 +47,9 @@ const client = supabase.createClient(
 );
 
 let user;
-let categoryChart, monthlyChart;
+let currentProfile = localStorage.getItem("currentProfile") || "Лични";
+let profiles = JSON.parse(localStorage.getItem("profiles")) || { "Лични": [] };
+let chart;
 
 window.onload = async () => {
   const { data } = await client.auth.getSession();
@@ -60,123 +57,157 @@ window.onload = async () => {
     user = data.session.user;
     document.getElementById("login").style.display="none";
     document.getElementById("app").style.display="block";
+    loadProfiles();
     load();
   }
 };
 
 async function login(){
-  const email = document.getElementById("email").value;
-  const pass = document.getElementById("pass").value;
+  let email=document.getElementById("email").value;
+  let pass=document.getElementById("pass").value;
 
   let { data, error } = await client.auth.signInWithPassword({ email, password: pass });
-  if(error){ alert("Login грешка: " + error.message); return; }
+
+  if(error){
+    alert("Login грешка: " + error.message);
+    return;
+  }
+
   user = data.user;
   document.getElementById("login").style.display="none";
   document.getElementById("app").style.display="block";
+  loadProfiles();
   load();
 }
 
-async function load(){
-  let query = client.from("transactions").select("*").eq("user_id", user.id);
-  const month = document.getElementById("monthFilter").value;
-  if(month){
-    query = query.gte('date', month+"-01").lt('date', month+"-32");
-  }
-  const { data } = await query;
-  render(data || []);
-  fillMonths(data || []);
-}
-
-function fillMonths(data){
-  const sel = document.getElementById("monthFilter");
-  const months = [...new Set(data.map(d=>d.date.slice(0,7)))];
-  sel.innerHTML = '<option value="">Всички месеци</option>';
-  months.forEach(m => {
-    const o = document.createElement("option");
-    o.value = m; o.innerText = m;
+function loadProfiles(){
+  let sel = document.getElementById("profile");
+  sel.innerHTML = "";
+  Object.keys(profiles).forEach(p=>{
+    let o = document.createElement("option");
+    o.value = p;
+    o.innerText = p;
     sel.appendChild(o);
   });
+  sel.value = currentProfile;
+}
+
+function switchProfile(){
+  currentProfile = document.getElementById("profile").value;
+  localStorage.setItem("currentProfile", currentProfile);
+  load();
+}
+
+function addProfile(){
+  let name = prompt("Име на профил:");
+  if(!name) return;
+  profiles[name] = [];
+  currentProfile = name;
+  localStorage.setItem("profiles", JSON.stringify(profiles));
+  loadProfiles();
+}
+
+async function load(){
+  let { data } = await client
+    .from("transactions")
+    .select("*")
+    .eq("profile", currentProfile)
+    .eq("user_id", user.id)
+    .order('created_at', {ascending:true});
+
+  render(data || []);
 }
 
 function render(data){
-  let bal=0, categories={}, monthly={};
-  const list = document.getElementById("list");
+  let bal=0;
+  let list=document.getElementById("list");
   list.innerHTML="";
+  let categories={}, monthData={};
 
-  data.forEach((d,i)=>{
-    let amount = parseFloat(d.amount.toFixed(2));
+  data.forEach(d=>{
+    let amount = parseFloat(d.amount);
     bal += amount;
 
-    const div = document.createElement("div");
+    // списък
+    let div=document.createElement("div");
     div.className="card";
-    div.innerHTML=`${d.name} ${amount.toFixed(2)} € <button onclick="del(${i})">❌</button>`;
+    div.innerHTML = `${d.name}: ${amount.toFixed(2)} € <button onclick="del('${d.id}')">❌</button>`;
     list.appendChild(div);
 
-    // categories
+    // категории
     if(amount < 0){
-      const cat = d.name.toLowerCase();
-      categories[cat] = (categories[cat]||0) + Math.abs(amount);
+      let cat = d.name.toLowerCase();
+      categories[cat] = (categories[cat] || 0) + Math.abs(amount);
     }
 
-    // monthly sums
-    const m = d.date.slice(0,7);
-    if(!monthly[m]) monthly[m]={inc:0, exp:0};
-    if(amount>0) monthly[m].inc += amount;
-    else monthly[m].exp += Math.abs(amount);
+    // по месеци
+    let month = new Date(d.created_at).toLocaleString("bg-BG",{month:"short", year:"numeric"});
+    monthData[month] = monthData[month] || { income:0, expense:0 };
+    if(amount >=0) monthData[month].income += amount;
+    else monthData[month].expense += Math.abs(amount);
   });
 
   document.getElementById("balance").innerText = bal.toFixed(2) + " €";
 
-  // 📊 category chart
-  const ctx = document.getElementById("categoryChart");
-  if(categoryChart) categoryChart.destroy();
-  categoryChart = new Chart(ctx,{ type:'doughnut', data:{
-    labels: Object.keys(categories),
-    datasets:[{ data:Object.values(categories), backgroundColor:['#22c55e','#ef4444','#3b82f6','#f59e0b','#8b5cf6','#ec4899'] }]
-  }});
+  // анализ категории
+  let analysisDiv = document.getElementById("analysis");
+  analysisDiv.innerHTML = "<h3>📊 Разходи по категории:</h3>";
+  let topCat="", max=0;
+  for(let c in categories){
+    let val = categories[c];
+    let p = document.createElement("div");
+    p.innerText = c + ": " + val.toFixed(2) + " €";
+    analysisDiv.appendChild(p);
+    if(val > max){ max=val; topCat=c; }
+  }
+  if(topCat){
+    let top = document.createElement("div");
+    top.innerHTML = "<b>🥇 Най-много харчиш за: " + topCat + " (" + max.toFixed(2) + " €)</b>";
+    analysisDiv.appendChild(top);
+  }
 
-  // 📈 monthly chart
-  const ctx2 = document.getElementById("monthlyChart");
-  if(monthlyChart) monthlyChart.destroy();
-  monthlyChart = new Chart(ctx2,{ type:'line', data:{
-    labels: Object.keys(monthly).sort(),
-    datasets:[
-      { label:'Доход', data:Object.keys(monthly).sort().map(k=>monthly[k].inc), borderColor:'#22c55e', fill:false },
-      { label:'Разход', data:Object.keys(monthly).sort().map(k=>monthly[k].exp), borderColor:'#ef4444', fill:false }
-    ]
-  }});
+  // графика по месеци
+  let labels = Object.keys(monthData);
+  let income = labels.map(l=>monthData[l].income.toFixed(2));
+  let expense = labels.map(l=>monthData[l].expense.toFixed(2));
+  let ctx = document.getElementById("chart");
 
-  // top category
-  let max = 0, topCat="";
-  for(let c in categories){ if(categories[c]>max){max=categories[c]; topCat=c;} }
-  const analysisDiv = document.getElementById("analysis");
-  analysisDiv.innerHTML = topCat ? `<h3>🥇 Най-много харчиш за: ${topCat} (${max.toFixed(2)} €)</h3>` : "";
+  if(chart) chart.destroy();
+  chart = new Chart(ctx, {
+    type:'line',
+    data:{
+      labels: labels,
+      datasets:[
+        {label:'Доход', data:income, borderColor:'#22c55e', fill:false},
+        {label:'Разход', data:expense, borderColor:'#ef4444', fill:false}
+      ]
+    },
+    options:{ responsive:true, maintainAspectRatio:false }
+  });
 }
 
 async function add(type){
-  const name = prompt("Категория:");
-  let val = parseFloat(prompt("Сума:"));
+  let name=prompt("Категория:");
+  let val=parseFloat(prompt("Сума:"));
   if(isNaN(val)) return;
-  if(type==="expense") val = -val;
+  if(type==="expense") val=-val;
 
-  await client.from("transactions").insert({
+  await client.from("transactions").insert([{
     user_id:user.id,
-    profile:"Лични",
+    profile:currentProfile,
     name:name || type,
-    amount:parseFloat(val.toFixed(2)),
-    date: new Date().toISOString()
-  });
+    amount:val,
+    created_at:new Date().toISOString()
+  }]);
 
   load();
 }
 
-async function del(index){
-  const { data } = await client.from("transactions").select("*").eq("user_id", user.id);
-  const t = data[index];
-  if(!t) return;
-  await client.from("transactions").delete().eq("id", t.id);
+async function del(id){
+  await client.from("transactions").delete().eq("id", id);
   load();
 }
 </script>
+
 </body>
 </html>
