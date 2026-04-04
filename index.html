@@ -1,199 +1,187 @@
 <!DOCTYPE html>
-
-<html>
+<html lang="bg">
 <head>
+<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
+<title>Budget Cloud MAX++</title>
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
-body { font-family:Arial; background:#0f172a; color:white; text-align:center; }
-button { padding:10px; margin:5px; }
-input { padding:10px; margin:5px; }
-
-.card {
-  background:#1e293b;
-  margin:10px;
-  padding:10px;
-  border-radius:10px;
-}
+body { font-family:Arial; background:#0f172a; color:white; text-align:center; margin:0; padding:0;}
+input, button { padding:10px; margin:5px; border-radius:5px; border:none; }
+button { cursor:pointer; }
+#app { display:none; padding:10px; }
+.card { background:#1e293b; margin:10px; padding:10px; border-radius:10px; }
 </style>
-
 </head>
-
 <body>
 
-<!-- LOGIN -->
+<h2>💰 Budget Cloud MAX++</h2>
 
 <div id="login">
-<h2>🔐 Вход</h2>
-
-<input id="email" placeholder="email">
-<input id="pass" type="password" placeholder="password">
-<br>
-<button onclick="login()">Login</button>
+  <input id="email" placeholder="email">
+  <input id="pass" type="password" placeholder="password">
+  <button onclick="login()">Login</button>
 </div>
 
-<!-- APP -->
-
-<div id="app" style="display:none;">
-<h2>💰 Budget Cloud</h2>
-
-<h1 id="balance">0 €</h1>
-
-<button onclick="add('income')">+ Доход</button> <button onclick="add('expense')">- Разход</button>
-
-<div id="list"></div>
-<div id="analysis" class="card"></div>
+<div id="app">
+  <h3 id="balance">0 €</h3>
+  <button onclick="add('income')">+ Доход</button>
+  <button onclick="add('expense')">- Разход</button>
+  <button onclick="add('bonus')">🎁 Бонус</button>
+  <div>
+    <select id="monthFilter" onchange="load()"></select>
+  </div>
+  <div id="list"></div>
+  <div id="analysis"></div>
+  <div class="card">
+    <canvas id="chart"></canvas>
+  </div>
 </div>
 
 <script>
+// ===== Supabase клиент =====
 const client = supabase.createClient(
   "https://ipihscvyyxetkiajjllg.supabase.co",
   "sb_publishable_r7Bgf2u5ZK30-DQVHPSHHQ_xgnsXY2x"
 );
 
 let user;
+let chart;
 
-// AUTO LOGIN
-window.onload = async () => {
-  const { data } = await client.auth.getSession();
-
-  if(data.session){
-    user = data.session.user;
-    document.getElementById("login").style.display="none";
-    document.getElementById("app").style.display="block";
-    load();
-  }
-};
-
-// LOGIN
+// ===== Login =====
 async function login(){
-  try{
-    let email=document.getElementById("email").value;
-    let pass=document.getElementById("pass").value;
+  let email=document.getElementById("email").value;
+  let pass=document.getElementById("pass").value;
 
-    if(!email || !pass){
-      alert("Въведи email и парола");
-      return;
-    }
-
-    let { data, error } = await client.auth.signInWithPassword({
-      email, password:pass
-    });
-
-    if(error){
-      alert("❌ " + error.message);
-      return;
-    }
-
-    user = data.user;
-
-    // скриваме login
-    document.getElementById("login").style.display="none";
-
-    // показваме app
-    document.getElementById("app").style.display="block";
-
-    load();
-
-  } catch(e){
-    alert("💥 Грешка: " + e.message);
-    console.log(e);
+  const { data, error } = await client.auth.signInWithPassword({email, password:pass});
+  if(error){
+    alert("Login грешка: " + error.message);
+    return;
   }
+
+  user = data.user;
+  document.getElementById("login").style.display="none";
+  document.getElementById("app").style.display="block";
+
+  load();
 }
 
-// LOAD
+// ===== Load transactions =====
 async function load(){
-  let { data } = await client
-    .from("transactions")
-    .select("*")
-    .eq("user_id", user.id);
+  if(!user) return;
 
+  // филтър по месец
+  let month = document.getElementById("monthFilter").value;
+
+  let query = client.from("transactions").select("*").eq("user_id", user.id);
+  if(month) query = query.gte('date', month+"-01").lt('date', month+"-32"); // през април
+
+  const { data } = await query;
   render(data || []);
 }
 
-// RENDER
+// ===== Render =====
 function render(data){
-  let bal=0;
-  let list=document.getElementById("list");
+  let bal=0, list=document.getElementById("list");
   list.innerHTML="";
+  let categories={};
+  let months={};
 
-  let categories = {};
-
-  data.forEach(d=>{
-    let amount = Number(d.amount);
+  data.forEach((d,i)=>{
+    let amount = Number(d.amount.toFixed(2));
     bal += amount;
 
     let div=document.createElement("div");
     div.className="card";
-    div.innerText = d.name + " " + amount + " €";
+    div.innerHTML = `
+      ${d.name} (${d.date ? d.date.slice(0,10) : ""}) <br>
+      <b style="color:${amount<0?'red':'lightgreen'}">${amount.toFixed(2)} €</b>
+      <button onclick="del(${d.id})">❌</button>
+    `;
     list.appendChild(div);
 
-    if(amount < 0){
-      let cat = d.name.toLowerCase();
+    // категории за анализ
+    let cat = d.name.toLowerCase();
+    categories[cat] = (categories[cat]||0) + Math.abs(amount);
 
-      if(!categories[cat]){
-        categories[cat] = 0;
-      }
-
-      categories[cat] += Math.abs(amount);
+    // по месеци
+    if(d.date){
+      let m = d.date.slice(0,7);
+      months[m] = true;
     }
   });
 
   document.getElementById("balance").innerText = bal.toFixed(2) + " €";
 
+  // анализ категории
   let analysisDiv = document.getElementById("analysis");
   analysisDiv.innerHTML = "<h3>📊 Разходи по категории:</h3>";
-
-  let topCat = "";
-  let max = 0;
-
+  let topCat="", max=0;
   for(let c in categories){
     let val = categories[c];
-
-    let p = document.createElement("div");
+    let p=document.createElement("div");
     p.innerText = c + ": " + val.toFixed(2) + " €";
     analysisDiv.appendChild(p);
-
-    if(val > max){
-      max = val;
-      topCat = c;
-    }
+    if(val>max){ max=val; topCat=c; }
   }
+  if(topCat) analysisDiv.innerHTML += `<br><b>Най-много харчиш за: ${topCat} (${max.toFixed(2)} €)</b>`;
 
-  if(topCat){
-    let top = document.createElement("div");
-    top.innerHTML = "<br><b>Най-много харчиш за: " + topCat + " (" + max.toFixed(2) + " €)</b>";
-    analysisDiv.appendChild(top);
-  }
+  // месечен филтър
+  let monthSel=document.getElementById("monthFilter");
+  monthSel.innerHTML="<option value=''>Всички месеци</option>";
+  Object.keys(months).sort().forEach(m=>{
+    let opt=document.createElement("option");
+    opt.value=m; opt.innerText=m;
+    monthSel.appendChild(opt);
+  });
+
+  // графика
+  drawChart(categories);
 }
 
-// ADD
+// ===== Add transaction =====
 async function add(type){
-  if(!user){
-    alert("Първо влез!");
-    return;
-  }
-
-  let name=prompt("Категория:");
-  let val=parseFloat(prompt("Сума:"));
-
+  let name = prompt("Категория:");
+  let val = parseFloat(prompt("Сума:"));
   if(isNaN(val)) return;
-
   if(type==="expense") val=-val;
 
-  await client.from("transactions").insert({
+  await client.from("transactions").insert([{
     user_id:user.id,
     profile:"Лични",
     name:name || type,
-    amount:val
-  });
+    amount:parseFloat(val.toFixed(2)),
+    date:new Date().toISOString()
+  }]);
 
   load();
+}
+
+// ===== Delete transaction =====
+async function del(id){
+  await client.from("transactions").delete().eq('id', id);
+  load();
+}
+
+// ===== Draw Chart =====
+function drawChart(categories){
+  let ctx=document.getElementById("chart");
+  if(chart) chart.destroy();
+
+  chart=new Chart(ctx,{
+    type:'doughnut',
+    data:{
+      labels:Object.keys(categories),
+      datasets:[{
+        data:Object.values(categories).map(v=>v.toFixed(2)),
+        backgroundColor:Object.keys(categories).map((_,i)=>`hsl(${i*50%360},70%,50%)`)
+      }]
+    },
+    options:{ responsive:true }
+  });
 }
 </script>
 
 </body>
 </html>
-
