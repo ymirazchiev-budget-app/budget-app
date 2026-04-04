@@ -30,12 +30,12 @@ button, select { padding:10px; margin:5px; border:none; border-radius:8px; }
 <div class="balance" id="balance">0 €</div>
 <div>💎 Бонус: <span id="bonus">0 €</span></div>
 
-<select id="profile" onchange="switchProfile()"></select>
+<select id="profile"></select>
 <button onclick="addProfile()">+ Профил</button>
 
 <br>
 
-<select id="monthSelect" onchange="load()"></select>
+<select id="monthSelect"></select>
 
 </div>
 
@@ -61,15 +61,11 @@ const client = supabase.createClient(
 
 let user, chart;
 
-// 👤 профили
-let profiles = JSON.parse(localStorage.getItem("profiles"));
-if(!profiles){
-  profiles=["Лични"];
-  localStorage.setItem("profiles", JSON.stringify(profiles));
-}
+// 👤 профили FIX
+let profiles = JSON.parse(localStorage.getItem("profiles")) || ["Лични"];
 let currentProfile = localStorage.getItem("profile") || "Лични";
 
-// 📅 месец
+// 📅 месец FIX
 let selectedMonth = new Date().getMonth();
 let selectedYear = new Date().getFullYear();
 
@@ -95,21 +91,25 @@ async function login(){
 function start(){
   document.getElementById("login").style.display="none";
   document.getElementById("app").style.display="block";
+
   loadProfiles();
   loadMonths();
+
+  document.getElementById("profile").onchange = switchProfile;
+  document.getElementById("monthSelect").onchange = changeMonth;
+
   load();
 }
 
-// 👤 профили
+// 👤 ПРОФИЛИ FIX
 function loadProfiles(){
   let sel=document.getElementById("profile");
   sel.innerHTML="";
-  profiles = JSON.parse(localStorage.getItem("profiles")) || ["Лични"];
 
   profiles.forEach(p=>{
     let o=document.createElement("option");
     o.value=p;
-    o.innerText=p;
+    o.textContent=p;
     sel.appendChild(o);
   });
 
@@ -123,12 +123,14 @@ function switchProfile(){
 }
 
 function addProfile(){
-  let name=prompt("Име:");
+  let name=prompt("Име на профил:");
   if(!name) return;
 
-  if(!profiles.includes(name)) profiles.push(name);
+  if(!profiles.includes(name)){
+    profiles.push(name);
+    localStorage.setItem("profiles", JSON.stringify(profiles));
+  }
 
-  localStorage.setItem("profiles", JSON.stringify(profiles));
   currentProfile=name;
   localStorage.setItem("profile", name);
 
@@ -136,23 +138,29 @@ function addProfile(){
   load();
 }
 
-// 📅 месец dropdown
+// 📅 МЕСЕЦ FIX (без Invalid Date)
 function loadMonths(){
   let sel=document.getElementById("monthSelect");
   sel.innerHTML="";
 
-  for(let i=0;i<12;i++){
+  let months=[
+    "Януари","Февруари","Март","Април","Май","Юни",
+    "Юли","Август","Септември","Октомври","Ноември","Декември"
+  ];
+
+  months.forEach((m,i)=>{
     let o=document.createElement("option");
     o.value=i;
-    o.innerText=new Date(0,i).toLocaleString('bg-BG',{month:'long'});
+    o.textContent=m;
     sel.appendChild(o);
-  }
+  });
 
   sel.value=selectedMonth;
 }
 
-function loadMonthValue(){
+function changeMonth(){
   selectedMonth=parseInt(document.getElementById("monthSelect").value);
+  load();
 }
 
 // 🧠 авто категории
@@ -167,10 +175,8 @@ function autoCategory(name){
   return name;
 }
 
-// 📥 load
+// 📥 LOAD
 async function load(){
-  loadMonthValue();
-
   let { data } = await client
     .from("transactions")
     .select("*")
@@ -180,7 +186,7 @@ async function load(){
   render(data||[]);
 }
 
-// 🎯 render
+// 🎯 RENDER
 function render(data){
   let bal=0, bonus=0, inc=0, exp=0;
   let list=document.getElementById("list");
@@ -192,10 +198,10 @@ function render(data){
 
   data.forEach(d=>{
     let amount=Number(d.amount);
-    let date=new Date(d.created_at);
+    let date=new Date(d.created_at || new Date());
 
-    // 💎 бонус
-    if(d.name==="bonus"){
+    // 💎 БОНУС FIX (запазва име)
+    if(d.type==="bonus"){
       bonus+=amount;
       inc+=amount;
       bal+=amount;
@@ -208,17 +214,16 @@ function render(data){
       }
     }
 
-    // 📅 месец filter
+    // месец
     if(date.getMonth()===selectedMonth && date.getFullYear()===selectedYear){
       if(amount>0) mInc+=amount;
       else mExp+=Math.abs(amount);
     }
 
-    // 📈 тренд
+    // графика
     let key=date.getFullYear()+"-"+(date.getMonth()+1);
     monthlyTrend[key]=(monthlyTrend[key]||0)+amount;
 
-    // UI
     let div=document.createElement("div");
     div.className="card";
     div.innerHTML=`
@@ -232,20 +237,15 @@ function render(data){
   document.getElementById("balance").innerText=bal.toFixed(2)+" €";
   document.getElementById("bonus").innerText=bonus.toFixed(2)+" €";
 
-  let html=`
-    <h3>📊 ${new Date(0,selectedMonth).toLocaleString('bg-BG',{month:'long'})}</h3>
+  document.getElementById("monthly").innerHTML=`
+    <h3>📊 ${["Януари","Февруари","Март","Април","Май","Юни","Юли","Август","Септември","Октомври","Ноември","Декември"][selectedMonth]}</h3>
     Доход: ${mInc.toFixed(2)} € <br>
     Разход: ${mExp.toFixed(2)} € <br>
     Баланс: ${(mInc-mExp).toFixed(2)} €
     <hr>
     <h3>Категории</h3>
+    ${Object.entries(categories).map(([k,v])=>k+": "+v.toFixed(2)+" €").join("<br>")}
   `;
-
-  for(let c in categories){
-    html+=c+": "+categories[c].toFixed(2)+" €<br>";
-  }
-
-  document.getElementById("monthly").innerHTML=html;
 
   drawChart(monthlyTrend);
 }
@@ -260,16 +260,14 @@ function drawChart(data){
     data:{
       labels:Object.keys(data),
       datasets:[{
-        label:'Баланс',
         data:Object.values(data),
-        borderColor:'#22c55e',
-        backgroundColor:'#22c55533'
+        borderColor:'#22c55e'
       }]
     }
   });
 }
 
-// ➕ add
+// ➕ ADD (FIX БОНУС ИМЕ)
 async function add(type){
   let name=prompt("Категория:");
   let val=prompt("Сума:");
@@ -278,22 +276,20 @@ async function add(type){
   if(isNaN(val)) return;
 
   if(type==="expense") val=-val;
-  if(type==="bonus") name="bonus";
-
-  name=autoCategory(name||type);
 
   await client.from("transactions").insert({
     user_id:user.id,
     profile:currentProfile,
-    name:name,
+    name:autoCategory(name||type),
     amount:val,
+    type:type, // 👉 това пази дали е бонус
     created_at:new Date().toISOString()
   });
 
   load();
 }
 
-// ❌ delete
+// ❌ DELETE
 async function del(id){
   await client.from("transactions").delete().eq("id", id);
   load();
