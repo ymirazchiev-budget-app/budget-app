@@ -50,22 +50,24 @@ let user;
 };
   
 async function login(){
-  let email=document.getElementById("email").value;
-  let pass=document.getElementById("pass").value;
+let email=document.getElementById("email").value;
+let pass=document.getElementById("pass").value;
 
-  let { data, error } = await client.auth.signInWithPassword({
-    email, password:pass
-  });
+let { data, error } = await client.auth.signInWithPassword({
+email, password:pass
+});
 
-  if(error){
-    let res = await client.auth.signUp({
-      email, password: pass
-    });
+if(error){
+alert("Login грешка: " + error.message);
+return;
+}
 
-    if(res.error){
-      alert("Грешка: " + res.error.message);
-      return;
-    }
+user = data.user;
+
+document.getElementById("app").style.display="block";
+load();
+}
+
 
     alert("Акаунт създаден! Натисни Login пак.");
     return;
