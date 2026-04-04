@@ -3,16 +3,11 @@
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-body { background:#0f172a; color:white; font-family:Arial; margin:0; }
-.header { padding:20px; }
-.balance { font-size:32px; }
-.card { background:#1e293b; margin:10px; padding:15px; border-radius:12px; }
-button, select { padding:10px; margin:5px; border:none; border-radius:8px; }
-.green { color:#22c55e; }
-.red { color:#ef4444; }
+body { background:#0f172a; color:white; font-family:Arial; text-align:center; }
+.card { background:#1e293b; margin:10px; padding:15px; border-radius:10px; }
+button, input, select { padding:10px; margin:5px; }
 </style>
 </head>
 
@@ -25,32 +20,13 @@ button, select { padding:10px; margin:5px; border:none; border-radius:8px; }
 </div>
 
 <div id="app" style="display:none;">
-
-<div class="header">
-<div class="balance" id="balance">0 €</div>
-<div>💎 Бонус: <span id="bonus">0 €</span></div>
-
-<select id="profile"></select>
-<button onclick="addProfile()">+ Профил</button>
-
-<br>
-
-<select id="monthSelect"></select>
-
-</div>
-
-<div class="card" id="monthly"></div>
+<h2 id="balance">0 €</h2>
 
 <button onclick="add('income')">+ Доход</button>
 <button onclick="add('expense')">- Разход</button>
 <button onclick="add('bonus')">🎁 Бонус</button>
 
-<div class="card">
-<canvas id="chart"></canvas>
-</div>
-
 <div id="list"></div>
-
 </div>
 
 <script>
@@ -59,18 +35,12 @@ const client = supabase.createClient(
 "sb_publishable_r7Bgf2u5ZK30-DQVHPSHHQ_xgnsXY2x"
 );
 
-let user, chart;
+let user;
 
-// 👤 профили FIX
-let profiles = JSON.parse(localStorage.getItem("profiles")) || ["Лични"];
-let currentProfile = localStorage.getItem("profile") || "Лични";
-
-// 📅 месец FIX
-let selectedMonth = new Date().getMonth();
-let selectedYear = new Date().getFullYear();
-
+// AUTO LOGIN
 window.onload = async ()=>{
   const { data } = await client.auth.getSession();
+
   if(data.session){
     user = data.session.user;
     start();
@@ -82,7 +52,11 @@ async function login(){
   let pass=document.getElementById("pass").value;
 
   let { data, error } = await client.auth.signInWithPassword({email,password:pass});
-  if(error){ alert(error.message); return; }
+
+  if(error){
+    alert(error.message);
+    return;
+  }
 
   user = data.user;
   start();
@@ -91,208 +65,85 @@ async function login(){
 function start(){
   document.getElementById("login").style.display="none";
   document.getElementById("app").style.display="block";
-
-  loadProfiles();
-  loadMonths();
-
-  document.getElementById("profile").onchange = switchProfile;
-  document.getElementById("monthSelect").onchange = changeMonth;
-
   load();
 }
 
-// 👤 ПРОФИЛИ FIX
-function loadProfiles(){
-  let sel=document.getElementById("profile");
-  sel.innerHTML="";
-
-  profiles.forEach(p=>{
-    let o=document.createElement("option");
-    o.value=p;
-    o.textContent=p;
-    sel.appendChild(o);
-  });
-
-  sel.value=currentProfile;
-}
-
-function switchProfile(){
-  currentProfile=document.getElementById("profile").value;
-  localStorage.setItem("profile", currentProfile);
-  load();
-}
-
-function addProfile(){
-  let name=prompt("Име на профил:");
-  if(!name) return;
-
-  if(!profiles.includes(name)){
-    profiles.push(name);
-    localStorage.setItem("profiles", JSON.stringify(profiles));
-  }
-
-  currentProfile=name;
-  localStorage.setItem("profile", name);
-
-  loadProfiles();
-  load();
-}
-
-// 📅 МЕСЕЦ FIX (без Invalid Date)
-function loadMonths(){
-  let sel=document.getElementById("monthSelect");
-  sel.innerHTML="";
-
-  let months=[
-    "Януари","Февруари","Март","Април","Май","Юни",
-    "Юли","Август","Септември","Октомври","Ноември","Декември"
-  ];
-
-  months.forEach((m,i)=>{
-    let o=document.createElement("option");
-    o.value=i;
-    o.textContent=m;
-    sel.appendChild(o);
-  });
-
-  sel.value=selectedMonth;
-}
-
-function changeMonth(){
-  selectedMonth=parseInt(document.getElementById("monthSelect").value);
-  load();
-}
-
-// 🧠 авто категории
-function autoCategory(name){
-  name=name.toLowerCase();
-
-  if(name.includes("храна")) return "🍔 Храна";
-  if(name.includes("ток") || name.includes("вода")) return "💡 Сметки";
-  if(name.includes("телефон")) return "📱 Телефон";
-  if(name.includes("гориво")) return "⛽ Транспорт";
-
-  return name;
-}
-
-// 📥 LOAD
+// LOAD DATA
 async function load(){
-  let { data } = await client
+  let { data, error } = await client
     .from("transactions")
     .select("*")
-    .eq("user_id", user.id)
-    .eq("profile", currentProfile);
+    .eq("user_id", user.id);
 
-  render(data||[]);
+  if(error){
+    alert("Грешка load: "+error.message);
+    return;
+  }
+
+  render(data || []);
 }
 
-// 🎯 RENDER
+// RENDER
 function render(data){
-  let bal=0, bonus=0, inc=0, exp=0;
+  let bal=0;
   let list=document.getElementById("list");
   list.innerHTML="";
 
-  let mInc=0, mExp=0;
-  let categories={};
-  let monthlyTrend={};
-
   data.forEach(d=>{
-    let amount=Number(d.amount);
-    let date=new Date(d.created_at || new Date());
-
-    // 💎 БОНУС FIX (запазва име)
-    if(d.type==="bonus"){
-      bonus+=amount;
-      inc+=amount;
-      bal+=amount;
-    } else {
-      bal+=amount;
-      if(amount>0) inc+=amount;
-      else{
-        exp+=Math.abs(amount);
-        categories[d.name]=(categories[d.name]||0)+Math.abs(amount);
-      }
-    }
-
-    // месец
-    if(date.getMonth()===selectedMonth && date.getFullYear()===selectedYear){
-      if(amount>0) mInc+=amount;
-      else mExp+=Math.abs(amount);
-    }
-
-    // графика
-    let key=date.getFullYear()+"-"+(date.getMonth()+1);
-    monthlyTrend[key]=(monthlyTrend[key]||0)+amount;
+    let amount = Number(d.amount);
+    bal += amount;
 
     let div=document.createElement("div");
     div.className="card";
-    div.innerHTML=`
-      ${d.name}
-      <b class="${amount<0?'red':'green'}">${amount.toFixed(2)} €</b>
+    div.innerHTML = `
+      ${d.name} (${d.type})
+      <b>${amount.toFixed(2)} €</b>
       <button onclick="del('${d.id}')">❌</button>
     `;
     list.appendChild(div);
   });
 
-  document.getElementById("balance").innerText=bal.toFixed(2)+" €";
-  document.getElementById("bonus").innerText=bonus.toFixed(2)+" €";
-
-  document.getElementById("monthly").innerHTML=`
-    <h3>📊 ${["Януари","Февруари","Март","Април","Май","Юни","Юли","Август","Септември","Октомври","Ноември","Декември"][selectedMonth]}</h3>
-    Доход: ${mInc.toFixed(2)} € <br>
-    Разход: ${mExp.toFixed(2)} € <br>
-    Баланс: ${(mInc-mExp).toFixed(2)} €
-    <hr>
-    <h3>Категории</h3>
-    ${Object.entries(categories).map(([k,v])=>k+": "+v.toFixed(2)+" €").join("<br>")}
-  `;
-
-  drawChart(monthlyTrend);
+  document.getElementById("balance").innerText = bal.toFixed(2)+" €";
 }
 
-// 📈 линия
-function drawChart(data){
-  let ctx=document.getElementById("chart");
-  if(chart) chart.destroy();
-
-  chart=new Chart(ctx,{
-    type:'line',
-    data:{
-      labels:Object.keys(data),
-      datasets:[{
-        data:Object.values(data),
-        borderColor:'#22c55e'
-      }]
-    }
-  });
-}
-
-// ➕ ADD (FIX БОНУС ИМЕ)
+// ADD (С DEBUG)
 async function add(type){
   let name=prompt("Категория:");
   let val=prompt("Сума:");
 
-  val=parseFloat(val.replace(",","."));
-  if(isNaN(val)) return;
+  val = parseFloat(val.replace(",","."));
+
+  if(isNaN(val)){
+    alert("Невалидна сума");
+    return;
+  }
 
   if(type==="expense") val=-val;
 
-  await client.from("transactions").insert({
+  let { error } = await client.from("transactions").insert({
     user_id:user.id,
-    profile:currentProfile,
-    name:autoCategory(name||type),
+    name:name || type,
     amount:val,
-    type:type, // 👉 това пази дали е бонус
+    type:type,
     created_at:new Date().toISOString()
   });
 
-  load();
+  if(error){
+    alert("Грешка запис: "+error.message);
+  } else {
+    load();
+  }
 }
 
-// ❌ DELETE
+// DELETE
 async function del(id){
-  await client.from("transactions").delete().eq("id", id);
-  load();
+  let { error } = await client.from("transactions").delete().eq("id", id);
+
+  if(error){
+    alert("Грешка триене: "+error.message);
+  } else {
+    load();
+  }
 }
 </script>
 
