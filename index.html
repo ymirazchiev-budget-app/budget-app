@@ -3,19 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Budget Cloud FINAL MAX++</title>
+<title>Budget Test9123 mail с месец</title>
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
 body { font-family:Arial; background:#0f172a; color:white; text-align:center; margin:0; padding:0; }
-input, button { padding:8px; margin:5px; border-radius:6px; border:none; }
+input, button, select { padding:8px; margin:5px; border-radius:6px; border:none; }
 .card { background:#1e293b; margin:5px; padding:10px; border-radius:8px; }
 #login, #app { padding:10px; }
 </style>
 </head>
 <body>
 
-<h2>💰 Budget Cloud FINAL MAX++</h2>
+<h2>💰 Budget Cloud MAX++ по месеци</h2>
 
 <div id="login">
   <input id="email" placeholder="email">
@@ -25,13 +25,19 @@ input, button { padding:8px; margin:5px; border-radius:6px; border:none; }
 
 <div id="app" style="display:none;">
   <h3 id="balance">0 €</h3>
+  
   <select id="profile" onchange="switchProfile()"></select>
   <button onclick="addProfile()">+ Профил</button>
   <br>
+  
   <button onclick="add('income')">+ Доход</button>
   <button onclick="add('expense')">- Разход</button>
   <button onclick="add('bonus')">🎁 Бонус</button>
-
+  <br>
+  
+  <label>Избери месец:</label>
+  <input type="month" id="monthSelector" onchange="load()">
+  
   <div class="card">
     <canvas id="chart"></canvas>
   </div>
@@ -68,10 +74,7 @@ async function login(){
 
   let { data, error } = await client.auth.signInWithPassword({ email, password: pass });
 
-  if(error){
-    alert("Login грешка: " + error.message);
-    return;
-  }
+  if(error){ alert("Login грешка: " + error.message); return; }
 
   user = data.user;
   document.getElementById("login").style.display="none";
@@ -108,13 +111,17 @@ function addProfile(){
 }
 
 async function load(){
-  let { data } = await client
-    .from("transactions")
-    .select("*")
-    .eq("profile", currentProfile)
-    .eq("user_id", user.id)
-    .order('created_at', {ascending:true});
+  let monthInput = document.getElementById("monthSelector").value;
+  let start = monthInput ? new Date(monthInput + "-01") : null;
+  let end = start ? new Date(start.getFullYear(), start.getMonth()+1, 0, 23,59,59) : null;
 
+  let query = client.from("transactions").select("*").eq("profile", currentProfile).eq("user_id", user.id).order('created_at', {ascending:true});
+
+  if(start && end){
+    query = query.gte("created_at", start.toISOString()).lte("created_at", end.toISOString());
+  }
+
+  let { data } = await query;
   render(data || []);
 }
 
@@ -188,7 +195,11 @@ function render(data){
 
 async function add(type){
   let name=prompt("Категория:");
-  let val=parseFloat(prompt("Сума:"));
+  let val = prompt("Сума:");
+  if(!val) return;
+
+  // FIX: конвертираме ',' -> '.'
+  val = parseFloat(val.replace(",","."));
   if(isNaN(val)) return;
   if(type==="expense") val=-val;
 
@@ -208,6 +219,5 @@ async function del(id){
   load();
 }
 </script>
-
 </body>
 </html>
