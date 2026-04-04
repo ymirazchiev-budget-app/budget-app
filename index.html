@@ -10,7 +10,7 @@ body { background:#0f172a; color:white; font-family:Arial; margin:0; }
 .header { padding:20px; }
 .balance { font-size:32px; }
 .card { background:#1e293b; margin:10px; padding:15px; border-radius:12px; }
-button { padding:10px; margin:5px; border:none; border-radius:8px; }
+button, select { padding:10px; margin:5px; border:none; border-radius:8px; }
 .green { color:#22c55e; }
 .red { color:#ef4444; }
 </style>
@@ -29,6 +29,9 @@ button { padding:10px; margin:5px; border:none; border-radius:8px; }
 <div class="header">
 <div class="balance" id="balance">0 €</div>
 <div>💎 Бонус: <span id="bonus">0 €</span></div>
+
+<select id="profile" onchange="switchProfile()"></select>
+<button onclick="addProfile()">+ Профил</button>
 </div>
 
 <div class="card" id="monthly"></div>
@@ -53,6 +56,10 @@ const client = supabase.createClient(
 
 let user, chart;
 
+// 👤 профили
+let currentProfile = localStorage.getItem("profile") || "Лични";
+let profiles = JSON.parse(localStorage.getItem("profiles")) || ["Лични"];
+
 window.onload = async ()=>{
   const { data } = await client.auth.getSession();
   if(data.session){
@@ -62,8 +69,8 @@ window.onload = async ()=>{
 };
 
 async function login(){
-  let email=emailEl().value;
-  let pass=passEl().value;
+  let email=document.getElementById("email").value;
+  let pass=document.getElementById("pass").value;
 
   let { data, error } = await client.auth.signInWithPassword({email,password:pass});
   if(error){ alert(error.message); return; }
@@ -75,49 +82,85 @@ async function login(){
 function start(){
   document.getElementById("login").style.display="none";
   document.getElementById("app").style.display="block";
+  loadProfiles();
   load();
 }
 
-function emailEl(){ return document.getElementById("email"); }
-function passEl(){ return document.getElementById("pass"); }
+// 👤 профили
+function loadProfiles(){
+  let sel=document.getElementById("profile");
+  sel.innerHTML="";
+  profiles.forEach(p=>{
+    let o=document.createElement("option");
+    o.value=p;
+    o.innerText=p;
+    sel.appendChild(o);
+  });
+  sel.value=currentProfile;
+}
 
+function switchProfile(){
+  currentProfile=document.getElementById("profile").value;
+  localStorage.setItem("profile", currentProfile);
+  load();
+}
+
+function addProfile(){
+  let name=prompt("Име на профил:");
+  if(!name) return;
+  profiles.push(name);
+  localStorage.setItem("profiles", JSON.stringify(profiles));
+  currentProfile=name;
+  localStorage.setItem("profile", name);
+  loadProfiles();
+  load();
+}
+
+// 📥 load
 async function load(){
   let { data } = await client
     .from("transactions")
     .select("*")
-    .eq("user_id", user.id);
+    .eq("user_id", user.id)
+    .eq("profile", currentProfile);
 
   render(data||[]);
 }
 
+// 🎯 render
 function render(data){
   let bal=0, bonus=0, inc=0, exp=0;
   let list=document.getElementById("list");
   list.innerHTML="";
 
-  let monthNow = new Date().getMonth();
+  let now=new Date();
+  let mInc=0, mExp=0;
 
   data.forEach(d=>{
-    let amount = Number(d.amount);
+    let amount=Number(d.amount);
+    let date=new Date(d.created_at);
 
+    // 💎 бонус FIX
     if(d.name==="bonus"){
-      bonus += amount;
+      bonus+=amount;
+      inc+=amount;
+      bal+=amount;
     } else {
-      bal += amount;
+      bal+=amount;
       if(amount>0) inc+=amount;
       else exp+=Math.abs(amount);
     }
 
-    // месечен отчет
-    let m = new Date(d.created_at).getMonth();
-    if(m===monthNow){
-      if(amount>0) inc+=0;
+    // 📊 месец
+    if(date.getMonth()===now.getMonth() && date.getFullYear()===now.getFullYear()){
+      if(amount>0) mInc+=amount;
+      else mExp+=Math.abs(amount);
     }
 
     let div=document.createElement("div");
     div.className="card";
-    div.innerHTML = `
-      ${d.name} 
+    div.innerHTML=`
+      ${d.name}
       <b class="${amount<0?'red':'green'}">${amount.toFixed(2)} €</b>
       <button onclick="del('${d.id}')">❌</button>
     `;
@@ -127,17 +170,17 @@ function render(data){
   document.getElementById("balance").innerText = bal.toFixed(2)+" €";
   document.getElementById("bonus").innerText = bonus.toFixed(2)+" €";
 
-  // месечен отчет
-  document.getElementById("monthly").innerHTML = `
+  document.getElementById("monthly").innerHTML=`
     <h3>📊 Този месец</h3>
-    Доход: ${inc.toFixed(2)} € <br>
-    Разход: ${exp.toFixed(2)} € <br>
-    Баланс: ${(inc-exp).toFixed(2)} €
+    Доход: ${mInc.toFixed(2)} € <br>
+    Разход: ${mExp.toFixed(2)} € <br>
+    Баланс: ${(mInc-mExp).toFixed(2)} €
   `;
 
   drawChart(inc,exp);
 }
 
+// 🟢 кръгла графика (както искаше)
 function drawChart(inc,exp){
   let ctx=document.getElementById("chart");
   if(chart) chart.destroy();
@@ -154,11 +197,12 @@ function drawChart(inc,exp){
   });
 }
 
+// ➕ добавяне
 async function add(type){
   let name=prompt("Категория:");
   let val=prompt("Сума:");
 
-  val = parseFloat(val.replace(",","."));
+  val=parseFloat(val.replace(",","."));
   if(isNaN(val)) return;
 
   if(type==="expense") val=-val;
@@ -166,6 +210,7 @@ async function add(type){
 
   await client.from("transactions").insert({
     user_id:user.id,
+    profile:currentProfile,
     name:name||type,
     amount:val,
     created_at:new Date().toISOString()
@@ -174,6 +219,7 @@ async function add(type){
   load();
 }
 
+// ❌ триене
 async function del(id){
   await client.from("transactions").delete().eq("id", id);
   load();
