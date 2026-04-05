@@ -3,13 +3,13 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Budget Desktop Login</title>
+<title>Budget Desktop Stable Login</title>
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <style>
-  body { font-family:Arial; background:#0f172a; color:white; text-align:center; }
-  input, button { padding:10px; margin:5px; border-radius:5px; border:none; }
-  button { cursor:pointer; background:#22c55e; color:white; }
-  #app { display:none; margin-top:20px; }
+body { font-family:Arial; background:#0f172a; color:white; text-align:center; }
+input, button { padding:10px; margin:5px; border-radius:5px; border:none; }
+button { cursor:pointer; background:#22c55e; color:white; }
+#app { display:none; margin-top:20px; }
 </style>
 </head>
 <body>
@@ -17,8 +17,8 @@
 <h2>💰 Budget Desktop</h2>
 
 <div id="login">
-  <input id="email" placeholder="Email" type="email"><br>
-  <input id="pass" placeholder="Парола" type="password"><br>
+  <input id="email" type="email" placeholder="Email"><br>
+  <input id="pass" type="password" placeholder="Парола"><br>
   <button id="loginBtn">Login / SignUp</button>
   <div id="msg" style="color:yellow; margin-top:10px;"></div>
 </div>
@@ -26,7 +26,7 @@
 <div id="app">
   <h1>Влязохте успешно!</h1>
   <p>Тук ще се зарежда апликацията.</p>
-  <button onclick="logout()">Logout</button>
+  <button id="logoutBtn">Logout</button>
 </div>
 
 <script>
@@ -40,10 +40,13 @@ const msg = document.getElementById("msg");
 const loginDiv = document.getElementById("login");
 const appDiv = document.getElementById("app");
 const loginBtn = document.getElementById("loginBtn");
+const logoutBtn = document.getElementById("logoutBtn");
 
 // Проверка за запазена сесия
 window.onload = async () => {
+  console.log("Проверка за session...");
   const { data } = await supabase.auth.getSession();
+  console.log("Session data:", data);
   if(data.session){
     user = data.session.user;
     showApp();
@@ -51,28 +54,33 @@ window.onload = async () => {
 };
 
 // Login / SignUp
-loginBtn.onclick = async () => {
+loginBtn.addEventListener("click", async () => {
   msg.innerText = "";
-  const email = document.getElementById("email").value;
-  const password = document.getElementById("pass").value;
+  const email = document.getElementById("email").value.trim();
+  const password = document.getElementById("pass").value.trim();
 
   if(!email || !password){
     msg.innerText = "Попълнете и двете полета!";
     return;
   }
 
-  // Опит за login
+  console.log("Опит за login с", email);
+
+  // Login
   let { data, error } = await supabase.auth.signInWithPassword({ email, password });
 
   if(error){
-    // Ако user не съществува, създаваме акаунт
+    console.log("Login error:", error);
+    // Ако няма акаунт, SignUp
     if(error.message.includes("Invalid login credentials") || error.message.includes("User not found")){
       let { data: signUpData, error: signUpError } = await supabase.auth.signUp({ email, password });
       if(signUpError){
         msg.innerText = "Грешка при създаване: " + signUpError.message;
+        console.log("SignUp error:", signUpError);
         return;
       }
       msg.innerText = "Акаунтът е създаден! Натиснете Login пак.";
+      console.log("SignUp success:", signUpData);
       return;
     } else {
       msg.innerText = "Login грешка: " + error.message;
@@ -80,10 +88,10 @@ loginBtn.onclick = async () => {
     }
   }
 
-  // Успешен login
+  console.log("Login success:", data.user);
   user = data.user;
   showApp();
-};
+});
 
 // Показване на апликацията
 function showApp(){
@@ -93,13 +101,13 @@ function showApp(){
 }
 
 // Logout
-async function logout(){
+logoutBtn.addEventListener("click", async () => {
   await supabase.auth.signOut();
   user = null;
   appDiv.style.display = "none";
   loginDiv.style.display = "block";
   msg.innerText = "Излязохте успешно.";
-}
+});
 </script>
 
 </body>
