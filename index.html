@@ -1,31 +1,35 @@
 <!DOCTYPE html>
-<html>
+<html lang="bg">
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<title>Budget Cloud</title>
 <style>
-body { font-family:Arial; background:#0f172a; color:white; text-align:center; }
-input, button { padding:10px; margin:5px; font-size:16px; }
-button { cursor:pointer; }
-#status { margin-top:10px; font-weight:bold; }
+body { font-family:Arial; background:#0f172a; color:white; text-align:center; margin:0; padding:20px; }
+input, button { padding:10px; margin:5px; border-radius:5px; border:none; }
+#app { display:none; }
+.card { background:#1e293b; margin:10px; padding:10px; border-radius:8px; }
 </style>
 </head>
 <body>
 
 <h2>💰 Budget Cloud</h2>
 
-<input id="email" type="email" placeholder="Email">
-<input id="pass" type="password" placeholder="Password">
+<div id="loginDiv">
+<input id="email" placeholder="email">
+<input id="pass" type="password" placeholder="password">
 <button id="loginBtn">Login / SignUp</button>
-<div id="status"></div>
+<div id="loginMsg" style="color:yellow;"></div>
+</div>
 
-<div id="app" style="display:none;">
-  <h1 id="balance">0 €</h1>
-  <button onclick="add('income')">+ Доход</button>
-  <button onclick="add('expense')">- Разход</button>
-  <button onclick="add('bonus')">💎 Бонус</button>
-  <div id="list"></div>
+<div id="app">
+<h3>Баланс: <span id="balance">0.00</span> €</h3>
+<button onclick="add('income')">+ Доход</button>
+<button onclick="add('expense')">- Разход</button>
+<button onclick="add('bonus')">🎁 Бонус</button>
+<div id="list"></div>
+<div id="analysis"></div>
 </div>
 
 <script>
@@ -36,84 +40,120 @@ const supabase = supabase.createClient(
 
 let user;
 
-// Стартираме listener след като DOM е готов
-window.addEventListener("DOMContentLoaded", () => {
-  document.getElementById("loginBtn").addEventListener("click", async (e) => {
-    e.preventDefault();
-    await login();
-  });
-});
+// ✅ Login / SignUp
+document.getElementById("loginBtn").addEventListener("click", async () => {
+  const email = document.getElementById("email").value;
+  const pass = document.getElementById("pass").value;
 
-// Async login/signUp
-async function login() {
-  const email = document.getElementById("email").value.trim();
-  const pass = document.getElementById("pass").value.trim();
-  if(!email || !pass) {
-    document.getElementById("status").innerText = "Въведи email и парола!";
+  if(!email || !pass){
+    document.getElementById("loginMsg").innerText = "Въведи email и password!";
     return;
   }
 
-  // Опитваме login
-  const { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({
-    email, password: pass
-  });
+  // Опитваме да влезем
+  let { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
 
-  if(loginError) {
-    // Ако акаунт няма → signup
-    const { data: signUpData, error: signUpError } = await supabase.auth.signUp({ email, password: pass });
-    if(signUpError) {
-      document.getElementById("status").innerText = "Грешка при signup: " + signUpError.message;
+  if(error && error.message.includes("User not found")){
+    // Автоматично създаваме акаунт
+    const res = await supabase.auth.signUp({ email, password: pass });
+    if(res.error){
+      document.getElementById("loginMsg").innerText = "Грешка при регистрация: " + res.error.message;
       return;
     }
-    document.getElementById("status").innerText = "Акаунт създаден! Натисни Login пак.";
+    document.getElementById("loginMsg").innerText = "Акаунт създаден! Натисни Login пак.";
+    return;
+  } else if(error){
+    document.getElementById("loginMsg").innerText = "Login грешка: " + error.message;
     return;
   }
 
-  user = loginData.user;
-  document.getElementById("status").innerText = "✅ Влезе успешно: " + user.email;
+  user = data.user;
+  document.getElementById("loginDiv").style.display = "none";
   document.getElementById("app").style.display = "block";
 
-  // Можем да заредим transactions тук
   loadTransactions();
+});
+
+// ✅ Зареждане на транзакции
+async function loadTransactions(){
+  const { data } = await supabase
+    .from("transactions")
+    .select("*")
+    .eq("user_id", user.id);
+
+  renderTransactions(data || []);
 }
 
-// Примерна функция за transactions
-async function loadTransactions() {
-  if(!user) return;
-  const { data, error } = await supabase.from("transactions").select("*").eq("user_id", user.id);
-  if(error) { console.error(error); return; }
-
-  let balance = 0;
-  const list = document.getElementById("list");
+// ✅ Рендер на транзакции и анализ
+function renderTransactions(data){
+  let bal = 0, inc = 0, exp = 0, bonus = 0;
+  let list = document.getElementById("list");
+  let analysisDiv = document.getElementById("analysis");
   list.innerHTML = "";
-  data.forEach(d => {
+  analysisDiv.innerHTML = "<h4>Разходи по категории:</h4>";
+
+  let categories = {};
+
+  data.forEach((d, i)=>{
     let amount = Number(d.amount);
-    balance += amount;
+
+    // бонус отделно
+    if(d.name.toLowerCase() === "bonus"){
+      bonus += amount;
+    } else {
+      bal += amount;
+      if(amount > 0) inc += amount;
+      else {
+        exp += Math.abs(amount);
+        let cat = d.name.toLowerCase();
+        categories[cat] = (categories[cat] || 0) + Math.abs(amount);
+      }
+    }
+
+    // Списък транзакции
     let div = document.createElement("div");
-    div.innerText = `${d.name}: ${amount.toFixed(2)} €`;
+    div.className = "card";
+    div.innerHTML = `${d.name}: <b style="color:${amount<0?'red':'lightgreen'}">${amount.toFixed(2)} €</b>
+      <button onclick="deleteTransaction('${d.id}')">❌</button>`;
     list.appendChild(div);
   });
-  document.getElementById("balance").innerText = balance.toFixed(2) + " €";
+
+  document.getElementById("balance").innerText = bal.toFixed(2) + " (€ + бонус " + bonus.toFixed(2) + ")";
+  
+  // Анализ по категории
+  for(let c in categories){
+    let p = document.createElement("div");
+    p.innerText = c + ": " + categories[c].toFixed(2) + " €";
+    analysisDiv.appendChild(p);
+  }
 }
 
-// Пример add функция
+// ✅ Добавяне на транзакция
 async function add(type){
-  if(!user) { alert("Влез първо!"); return; }
-  const name = prompt("Категория:");
+  let name = prompt("Категория:");
   let val = parseFloat(prompt("Сума:"));
+
   if(isNaN(val)) return;
-  if(type==="expense") val = -val;
+
+  if(type === "expense") val = -Math.abs(val);
+  if(type === "bonus") type = "bonus";
 
   await supabase.from("transactions").insert({
     user_id: user.id,
     profile: "Лични",
     name: name || type,
-    amount: val,
-    created_at: new Date().toISOString()
+    amount: val
   });
 
   loadTransactions();
 }
+
+// ✅ Трие транзакция
+async function deleteTransaction(id){
+  await supabase.from("transactions").delete().eq("id", id);
+  loadTransactions();
+}
 </script>
+
 </body>
 </html>
