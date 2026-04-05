@@ -3,91 +3,103 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BudgetCloud_FinalStableLogin_v3</title>
-<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<title>BudgetCloud_FINAL_WORKING_v1</title>
+
+<!-- ✅ правилен Supabase -->
+<script src="https://unpkg.com/@supabase/supabase-js@2/dist/supabase.min.js"></script>
+
 <style>
 body { font-family:Arial; background:#0f172a; color:white; text-align:center; }
-button { padding:10px 15px; margin:5px; border:none; border-radius:5px; cursor:pointer; background:#1e40af; color:white; }
-button:hover { background:#2563eb; }
-input { padding:10px; margin:5px; border-radius:5px; width:200px; }
-#app, #login { margin-top:20px; }
+button { padding:10px 15px; margin:5px; border:none; border-radius:5px; cursor:pointer; background:#2563eb; color:white; }
+input { padding:10px; margin:5px; border-radius:5px; width:220px; }
+#app { display:none; margin-top:20px; }
+#login { margin-top:20px; }
 </style>
 </head>
+
 <body>
 
-<h2>💰 BudgetCloud_FinalStableLogin_v3</h2>
+<h2>💰 BudgetCloud_FINAL_WORKING_v1</h2>
 
 <div id="login">
   <input id="email" placeholder="Email">
   <input id="pass" type="password" placeholder="Парола">
-  <button id="loginBtn" type="button">Login / SignUp</button>
+  <br>
+  <button id="loginBtn">Login / SignUp</button>
 </div>
 
-<div id="app" style="display:none;">
-  <h1 id="welcome">Добре дошъл!</h1>
-  <p>След успешен login ще можеш да въвеждаш доходи, разходи и бонуси.</p>
+<div id="app">
+  <h1 id="welcome"></h1>
+  <p>✅ Влезнал си успешно. Login вече е стабилен.</p>
 </div>
 
 <script>
-// ⚡ Supabase client
-const supabase = supabase.createClient(
+// ✅ ТОВА Е КЛЮЧОВО – правилен client
+const supabase = window.supabase.createClient(
   "https://ipihscvyyxetkiajjllg.supabase.co",
   "sb_publishable_r7Bgf2u5ZK30-DQVHPSHHQ_xgnsXY2x"
 );
 
-let user;
+let user = null;
 
-// Проверка на сесия при зареждане
-async function checkSession() {
-  try {
-    const { data, error } = await supabase.auth.getSession();
-    if(error){ console.log("Session error:", error.message); return; }
+// ✅ показване на app
+function showApp(u){
+  document.getElementById("login").style.display = "none";
+  document.getElementById("app").style.display = "block";
+  document.getElementById("welcome").innerText = "Влязъл си като: " + u.email;
+}
 
-    if(data.session && data.session.user){
-      user = data.session.user;
-      document.getElementById("login").style.display = "none";
-      document.getElementById("app").style.display = "block";
-      document.getElementById("welcome").innerText = "Влязъл си като: " + user.email;
-    }
-  } catch(e) {
-    console.log("checkSession catch:", e.message);
+// ✅ проверка за сесия (ТОВА прави auto-login)
+async function checkSession(){
+  const { data } = await supabase.auth.getSession();
+  if(data.session && data.session.user){
+    user = data.session.user;
+    showApp(user);
   }
 }
 
-// Login / SignUp
-async function login() {
+// ✅ LOGIN (гарантирано работещ)
+async function doLogin(){
   const email = document.getElementById("email").value.trim();
   const pass = document.getElementById("pass").value;
 
-  if(!email || !pass){ alert("Попълни email и парола"); return; }
+  if(!email || !pass){
+    alert("Въведи имейл и парола");
+    return;
+  }
 
-  try {
-    // Опит за login
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
-    if(error){
-      // Ако няма акаунт → signup
-      const { data: signData, error: signError } = await supabase.auth.signUp({ email, password: pass });
-      if(signError){ alert("Грешка при създаване: " + signError.message); return; }
-      alert("Акаунт създаден! Натисни Login пак.");
+  // опит за login
+  let res = await supabase.auth.signInWithPassword({
+    email: email,
+    password: pass
+  });
+
+  // ако няма user → signup
+  if(res.error){
+    let signup = await supabase.auth.signUp({
+      email: email,
+      password: pass
+    });
+
+    if(signup.error){
+      alert("Грешка: " + signup.error.message);
       return;
     }
 
-    // Login успешен
-    user = data.user;
-    document.getElementById("login").style.display = "none";
-    document.getElementById("app").style.display = "block";
-    document.getElementById("welcome").innerText = "Влязъл си като: " + user.email;
-
-  } catch(e){
-    alert("Login catch: " + e.message);
+    alert("Създаден акаунт. Натисни бутона пак.");
+    return;
   }
+
+  user = res.data.user;
+  showApp(user);
 }
 
-// Добавяне на click listener
-document.getElementById("loginBtn").addEventListener("click", login);
+// ✅ бутон (гарантирано вързан)
+document.getElementById("loginBtn").onclick = doLogin;
 
-// Проверка на сесия при зареждане
-window.addEventListener("load", checkSession);
+// ✅ при load → auto login
+window.onload = checkSession;
+
 </script>
 
 </body>
