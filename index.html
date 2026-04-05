@@ -3,153 +3,246 @@
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-body { font-family:Arial; background:#0f172a; color:white; text-align:center; }
-input, button { padding:10px; margin:5px; }
+body { background:#0f172a; color:white; font-family:Arial; text-align:center; }
+button,input,select { padding:10px; margin:5px; border-radius:8px; }
+.card { background:#1e293b; padding:10px; margin:10px; border-radius:10px; }
 </style>
 </head>
 
 <body>
 
-<h2>💰 Budget Cloud</h2>
+<h2>💰 Budget MAX</h2>
 
-<div id="loginSection">
+<div id="login">
 <input id="email" placeholder="email">
 <input id="pass" type="password" placeholder="password">
-<br>
 <button onclick="login()">Login</button>
 </div>
 
 <div id="app" style="display:none;">
+
+<select id="profile" onchange="switchProfile()"></select>
+<button onclick="addProfile()">+ Профил</button>
+
+<select id="month" onchange="load()"></select>
+
 <h1 id="balance">0 €</h1>
+<div id="bonus">💎 Бонус: 0 €</div>
 
 <button onclick="add('income')">+ Доход</button>
 <button onclick="add('expense')">- Разход</button>
+<button onclick="add('bonus')">🎁 Бонус</button>
+
+<div class="card">
+<canvas id="chart"></canvas>
+</div>
+
+<div class="card" id="analysis"></div>
 
 <div id="list"></div>
+
 </div>
 
 <script>
-const client = supabase.createClient(
+const db = supabase.createClient(
 "https://ipihscvyyxetkiajjllg.supabase.co",
 "sb_publishable_r7Bgf2u5ZK30-DQVHPSHHQ_xgnsXY2x"
 );
 
-let user = null;
+let user, profiles=[], currentProfile, chart;
 
-// автоматично влизане ако вече има сесия
+// AUTO LOGIN
 window.onload = async () => {
-  const { data } = await client.auth.getSession();
-
+  let { data } = await db.auth.getSession();
   if(data.session){
     user = data.session.user;
-    showApp();
-    load();
+    start();
   }
 };
 
-function showApp(){
-  document.getElementById("loginSection").style.display="none";
-  document.getElementById("app").style.display="block";
-}
-
-// LOGIN (работещ 100%)
+// LOGIN
 async function login(){
-  let email = document.getElementById("email").value;
-  let pass = document.getElementById("pass").value;
+  let email=emailEl.value, pass=passEl.value;
 
-  if(!email || !pass){
-    alert("Въведи email и парола");
-    return;
-  }
+  let { data, error } = await db.auth.signInWithPassword({ email, password:pass });
 
-  // пробва вход
-  let { data, error } = await client.auth.signInWithPassword({
-    email: email,
-    password: pass
-  });
-
-  // ако няма акаунт → създава
   if(error){
-    let res = await client.auth.signUp({
-      email: email,
-      password: pass
-    });
-
-    if(res.error){
-      alert("Грешка: " + res.error.message);
-      return;
-    }
-
-    alert("Акаунт създаден! Натисни Login пак.");
+    let r = await db.auth.signUp({ email, password:pass });
+    alert("Създаден акаунт → натисни Login пак");
     return;
   }
 
   user = data.user;
-  showApp();
+  start();
+}
+
+function start(){
+  loginDiv.style.display="none";
+  app.style.display="block";
+  initMonths();
+  loadProfiles();
+}
+
+// ПРОФИЛИ
+async function loadProfiles(){
+  let { data } = await db.from("transactions")
+    .select("profile")
+    .eq("user_id", user.id);
+
+  let unique = [...new Set(data.map(d=>d.profile||"Лични"))];
+
+  profiles = unique.length ? unique : ["Лични"];
+  currentProfile = profiles[0];
+
+  let sel=profile;
+  sel.innerHTML="";
+  profiles.forEach(p=>{
+    let o=document.createElement("option");
+    o.value=p;
+    o.innerText=p;
+    sel.appendChild(o);
+  });
+
   load();
 }
 
-// зареждане
+function addProfile(){
+  let p=prompt("Име:");
+  if(!p) return;
+  profiles.push(p);
+  currentProfile=p;
+  loadProfiles();
+}
+
+function switchProfile(){
+  currentProfile=profile.value;
+  load();
+}
+
+// МЕСЕЦИ
+function initMonths(){
+  let now=new Date();
+  for(let i=0;i<12;i++){
+    let d=new Date(now.getFullYear(),now.getMonth()-i,1);
+    let val=d.toISOString().slice(0,7);
+    let o=document.createElement("option");
+    o.value=val;
+    o.innerText=d.toLocaleString("bg",{month:"long",year:"numeric"});
+    month.appendChild(o);
+  }
+}
+
+// LOAD DATA
 async function load(){
-  let { data } = await client
-    .from("transactions")
+  let m=month.value;
+
+  let { data } = await db.from("transactions")
     .select("*")
     .eq("user_id", user.id);
 
-  render(data || []);
+  let filtered = data.filter(d=>{
+    if(currentProfile && d.profile!==currentProfile) return false;
+    if(m){
+      let dt=new Date(d.created_at);
+      return dt.toISOString().slice(0,7)===m;
+    }
+    return true;
+  });
+
+  render(filtered);
 }
 
-// визуализация
+// RENDER
 function render(data){
-  let bal = 0;
-  let list = document.getElementById("list");
-  list.innerHTML = "";
+  let bal=0, bonusSum=0, inc=0, exp=0, cats={};
+  list.innerHTML="";
 
   data.forEach(d=>{
-    let amount = Number(d.amount);
-    bal += amount;
+    let a=Number(d.amount);
 
-    let div = document.createElement("div");
-    div.innerText = d.name + " " + amount.toFixed(2) + " €";
+    if(d.type==="bonus") bonusSum+=a;
+    else{
+      bal+=a;
+      if(a>0) inc+=a;
+      else{
+        exp+=Math.abs(a);
+        cats[d.name]=(cats[d.name]||0)+Math.abs(a);
+      }
+    }
 
-    let btn = document.createElement("button");
-    btn.innerText = "❌";
-    btn.onclick = ()=>del(d.id);
-
-    div.appendChild(btn);
+    let div=document.createElement("div");
+    div.className="card";
+    div.innerHTML=`
+      ${d.name} ${a.toFixed(2)} €
+      <button onclick="del('${d.id}')">❌</button>
+    `;
     list.appendChild(div);
   });
 
-  document.getElementById("balance").innerText = bal.toFixed(2) + " €";
+  balance.innerText=bal.toFixed(2)+" €";
+  bonus.innerText="💎 Бонус: "+bonusSum.toFixed(2)+" €";
+
+  // анализ
+  analysis.innerHTML="<h3>📊 Разходи:</h3>";
+  let top="",max=0;
+  for(let c in cats){
+    analysis.innerHTML+=c+": "+cats[c].toFixed(2)+" €<br>";
+    if(cats[c]>max){max=cats[c];top=c;}
+  }
+  if(top) analysis.innerHTML+="<br><b>Топ: "+top+"</b>";
+
+  draw(inc,exp);
 }
 
-// добавяне
-async function add(type){
-  let name = prompt("Категория:");
-  let val = parseFloat(prompt("Сума:").replace(",", "."));
+// CHART
+function draw(inc,exp){
+  if(chart) chart.destroy();
 
+  chart=new Chart(chartEl,{
+    type:"line",
+    data:{
+      labels:["Доход","Разход"],
+      datasets:[{
+        data:[inc,exp],
+        borderColor:"#38bdf8"
+      }]
+    }
+  });
+}
+
+// ADD
+async function add(type){
+  let name=prompt("Категория:");
+  let val=parseFloat(prompt("Сума:").replace(",","."));
   if(isNaN(val)) return;
 
-  if(type==="expense") val = -val;
+  if(type==="expense") val=-val;
 
-  await client.from("transactions").insert({
-    user_id: user.id,
-    profile: "Лични",
-    name: name || type,
-    amount: val,
-    type: type
+  await db.from("transactions").insert({
+    user_id:user.id,
+    profile:currentProfile,
+    name:name||type,
+    amount:val,
+    type:type
   });
 
   load();
 }
 
-// триене
+// DELETE
 async function del(id){
-  await client.from("transactions").delete().eq("id", id);
+  await db.from("transactions").delete().eq("id",id);
   load();
 }
+
+// SHORTCUTS
+let emailEl=document.getElementById("email");
+let passEl=document.getElementById("pass");
+let loginDiv=document.getElementById("login");
+let chartEl=document.getElementById("chart");
 </script>
 
 </body>
