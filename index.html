@@ -3,103 +3,71 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BudgetCloud_FINAL_WORKING_v1</title>
+<title>BudgetCloud_RESTORE_STABLE_v1</title>
 
-<!-- ✅ правилен Supabase -->
-<script src="https://unpkg.com/@supabase/supabase-js@2/dist/supabase.min.js"></script>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
 <style>
 body { font-family:Arial; background:#0f172a; color:white; text-align:center; }
-button { padding:10px 15px; margin:5px; border:none; border-radius:5px; cursor:pointer; background:#2563eb; color:white; }
-input { padding:10px; margin:5px; border-radius:5px; width:220px; }
-#app { display:none; margin-top:20px; }
-#login { margin-top:20px; }
+#app { display:none; margin-top:30px; }
 </style>
 </head>
 
 <body>
 
-<h2>💰 BudgetCloud_FINAL_WORKING_v1</h2>
-
-<div id="login">
-  <input id="email" placeholder="Email">
-  <input id="pass" type="password" placeholder="Парола">
-  <br>
-  <button id="loginBtn">Login / SignUp</button>
-</div>
+<h2>💰 BudgetCloud_RESTORE_STABLE_v1</h2>
 
 <div id="app">
   <h1 id="welcome"></h1>
-  <p>✅ Влезнал си успешно. Login вече е стабилен.</p>
+  <p>✅ Влязъл си автоматично (без login)</p>
 </div>
 
 <script>
-// ✅ ТОВА Е КЛЮЧОВО – правилен client
 const supabase = window.supabase.createClient(
   "https://ipihscvyyxetkiajjllg.supabase.co",
   "sb_publishable_r7Bgf2u5ZK30-DQVHPSHHQ_xgnsXY2x"
 );
 
-let user = null;
+let user;
 
-// ✅ показване на app
-function showApp(u){
-  document.getElementById("login").style.display = "none";
-  document.getElementById("app").style.display = "block";
-  document.getElementById("welcome").innerText = "Влязъл си като: " + u.email;
-}
+// 👉 ТОВА Е КЛЮЧА (старото работещо поведение)
+async function init(){
 
-// ✅ проверка за сесия (ТОВА прави auto-login)
-async function checkSession(){
-  const { data } = await supabase.auth.getSession();
-  if(data.session && data.session.user){
+  // 1. Проверка за съществуваща сесия
+  let { data } = await supabase.auth.getSession();
+
+  if(data.session){
     user = data.session.user;
-    showApp(user);
-  }
-}
-
-// ✅ LOGIN (гарантирано работещ)
-async function doLogin(){
-  const email = document.getElementById("email").value.trim();
-  const pass = document.getElementById("pass").value;
-
-  if(!email || !pass){
-    alert("Въведи имейл и парола");
+    startApp();
     return;
   }
 
-  // опит за login
+  // 2. Ако няма сесия → автоматичен login (ЕДИН ПЪТ)
+  const email = "u2m@mail.bg";
+  const password = "12345678"; // сложи твоята реална парола
+
   let res = await supabase.auth.signInWithPassword({
-    email: email,
-    password: pass
+    email,
+    password
   });
 
-  // ако няма user → signup
   if(res.error){
-    let signup = await supabase.auth.signUp({
-      email: email,
-      password: pass
-    });
-
-    if(signup.error){
-      alert("Грешка: " + signup.error.message);
-      return;
-    }
-
-    alert("Създаден акаунт. Натисни бутона пак.");
+    console.log("Login error:", res.error.message);
     return;
   }
 
   user = res.data.user;
-  showApp(user);
+  startApp();
 }
 
-// ✅ бутон (гарантирано вързан)
-document.getElementById("loginBtn").onclick = doLogin;
+// 👉 стартира app без login UI
+function startApp(){
+  document.getElementById("app").style.display = "block";
+  document.getElementById("welcome").innerText = "Влязъл си като: " + user.email;
+}
 
-// ✅ при load → auto login
-window.onload = checkSession;
-
+// старт
+init();
 </script>
 
 </body>
