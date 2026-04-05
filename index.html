@@ -3,111 +3,135 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Budget Desktop Stable Login</title>
+<title>Budget Cloud FIX</title>
+
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <style>
-body { font-family:Arial; background:#0f172a; color:white; text-align:center; }
-input, button { padding:10px; margin:5px; border-radius:5px; border:none; }
-button { cursor:pointer; background:#22c55e; color:white; }
-#app { display:none; margin-top:20px; }
+body { font-family: Arial; background:#0f172a; color:white; text-align:center; margin:0; }
+button, input { padding:10px; margin:5px; border-radius:6px; border:none; }
+#app { display:none; }
+.card { background:#1e293b; margin:5px; padding:10px; border-radius:8px; }
 </style>
 </head>
 <body>
 
-<h2>💰 Budget Desktop</h2>
+<h2>💰 Budget Cloud</h2>
 
-<div id="login">
-  <input id="email" type="email" placeholder="Email"><br>
-  <input id="pass" type="password" placeholder="Парола"><br>
+<div id="loginDiv">
+  <input id="email" placeholder="Email">
+  <input id="pass" type="password" placeholder="Парола">
   <button id="loginBtn">Login / SignUp</button>
-  <div id="msg" style="color:yellow; margin-top:10px;"></div>
 </div>
 
 <div id="app">
-  <h1>Влязохте успешно!</h1>
-  <p>Тук ще се зарежда апликацията.</p>
-  <button id="logoutBtn">Logout</button>
+  <h1 id="balance">0 €</h1>
+  <button onclick="add('income')">+ Доход</button>
+  <button onclick="add('expense')">- Разход</button>
+  <button onclick="add('bonus')">🎁 Бонус</button>
+  <div id="list"></div>
 </div>
 
 <script>
-const supabase = supabase.createClient(
+const client = supabase.createClient(
   "https://ipihscvyyxetkiajjllg.supabase.co",
   "sb_publishable_r7Bgf2u5ZK30-DQVHPSHHQ_xgnsXY2x"
 );
 
-let user = null;
-const msg = document.getElementById("msg");
-const loginDiv = document.getElementById("login");
-const appDiv = document.getElementById("app");
-const loginBtn = document.getElementById("loginBtn");
-const logoutBtn = document.getElementById("logoutBtn");
+let user;
 
-// Проверка за запазена сесия
+// Проверка за съществуваща сесия
 window.onload = async () => {
-  console.log("Проверка за session...");
-  const { data } = await supabase.auth.getSession();
-  console.log("Session data:", data);
+  const { data } = await client.auth.getSession();
   if(data.session){
     user = data.session.user;
     showApp();
+    load();
   }
 };
 
 // Login / SignUp
-loginBtn.addEventListener("click", async () => {
-  msg.innerText = "";
-  const email = document.getElementById("email").value.trim();
-  const password = document.getElementById("pass").value.trim();
-
-  if(!email || !password){
-    msg.innerText = "Попълнете и двете полета!";
+document.getElementById("loginBtn").addEventListener("click", async () => {
+  const email = document.getElementById("email").value;
+  const pass = document.getElementById("pass").value;
+  
+  if(!email || !pass){
+    alert("Въведи email и парола!");
     return;
   }
-
-  console.log("Опит за login с", email);
-
-  // Login
-  let { data, error } = await supabase.auth.signInWithPassword({ email, password });
-
+  
+  // Опит за login
+  let { data, error } = await client.auth.signInWithPassword({ email, password: pass });
+  
   if(error){
-    console.log("Login error:", error);
-    // Ако няма акаунт, SignUp
-    if(error.message.includes("Invalid login credentials") || error.message.includes("User not found")){
-      let { data: signUpData, error: signUpError } = await supabase.auth.signUp({ email, password });
-      if(signUpError){
-        msg.innerText = "Грешка при създаване: " + signUpError.message;
-        console.log("SignUp error:", signUpError);
-        return;
-      }
-      msg.innerText = "Акаунтът е създаден! Натиснете Login пак.";
-      console.log("SignUp success:", signUpData);
-      return;
-    } else {
-      msg.innerText = "Login грешка: " + error.message;
+    // Ако няма акаунт – създаваме
+    let { data: signupData, error: signupError } = await client.auth.signUp({ email, password: pass });
+    if(signupError){
+      alert("Грешка: " + signupError.message);
       return;
     }
+    alert("Акаунт създаден! Натисни Login отново.");
+    return;
   }
-
-  console.log("Login success:", data.user);
+  
   user = data.user;
   showApp();
+  load();
 });
 
-// Показване на апликацията
 function showApp(){
-  loginDiv.style.display = "none";
-  appDiv.style.display = "block";
-  msg.innerText = "";
+  document.getElementById("loginDiv").style.display="none";
+  document.getElementById("app").style.display="block";
 }
 
-// Logout
-logoutBtn.addEventListener("click", async () => {
-  await supabase.auth.signOut();
-  user = null;
-  appDiv.style.display = "none";
-  loginDiv.style.display = "block";
-  msg.innerText = "Излязохте успешно.";
-});
+// Зареждане на транзакции
+async function load(){
+  let { data } = await client.from("transactions").select("*").eq("user_id", user.id);
+  render(data || []);
+}
+
+function render(data){
+  let bal=0;
+  let list=document.getElementById("list");
+  list.innerHTML="";
+
+  data.forEach((d,i)=>{
+    let amount = Number(d.amount);
+    bal += amount;
+
+    let div=document.createElement("div");
+    div.className="card";
+    div.innerHTML=`${d.name}: ${amount.toFixed(2)} € <button onclick="del(${i})">❌</button>`;
+    list.appendChild(div);
+  });
+
+  document.getElementById("balance").innerText = bal.toFixed(2) + " €";
+}
+
+// Добавяне на транзакции
+async function add(type){
+  let name = prompt("Категория:");
+  let val = parseFloat(prompt("Сума:"));
+  if(isNaN(val)) return;
+  if(type==="expense") val=-val;
+
+  await client.from("transactions").insert({
+    user_id:user.id,
+    profile:"Лични",
+    name:name || type,
+    amount:val,
+    created_at: new Date()
+  });
+
+  load();
+}
+
+// Триене
+async function del(index){
+  let { data } = await client.from("transactions").select("*").eq("user_id", user.id);
+  if(!data || !data[index]) return;
+  await client.from("transactions").delete().eq("id", data[index].id);
+  load();
+}
 </script>
 
 </body>
