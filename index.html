@@ -1,85 +1,32 @@
-<!DOCTYPE html>
-<html lang="bg">
-<head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-<title>Budget Cloud v2.2 🔑</title>
-<style>
-body { font-family:Arial; background:#0f172a; color:white; text-align:center; padding:20px; }
-input, button { padding:10px; margin:5px; border-radius:5px; border:none; }
-#loginMsg { color: yellow; margin-top:10px; }
-#app { display:none; margin-top:20px; }
-</style>
-</head>
-<body>
+document.addEventListener("DOMContentLoaded", () => {
+  const loginBtn = document.getElementById("loginBtn");
+  loginBtn.addEventListener("click", async () => {
+    const email = document.getElementById("email").value;
+    const pass = document.getElementById("pass").value;
+    const msgDiv = document.getElementById("loginMsg");
 
-<h2>💰 Budget Cloud v2.2 🔑</h2>
-
-<div id="loginDiv">
-  <input id="email" placeholder="email">
-  <input id="pass" type="password" placeholder="password">
-  <button id="loginBtn">Login / SignUp</button>
-  <div id="loginMsg"></div>
-</div>
-
-<div id="app">
-  <h3>Влязохте успешно!</h3>
-  <p>Тук ще се зарежда приложението и данните.</p>
-</div>
-
-<script>
-const supabase = supabase.createClient(
-  "https://ipihscvyyxetkiajjllg.supabase.co",
-  "sb_publishable_r7Bgf2u5ZK30-DQVHPSHHQ_xgnsXY2x"
-);
-
-let user = null;
-
-// Проверка при зареждане на страницата
-window.onload = async () => {
-  const { data: { session } } = await supabase.auth.getSession();
-  if(session){
-    user = session.user;
-    document.getElementById("loginDiv").style.display = "none";
-    document.getElementById("app").style.display = "block";
-  }
-};
-
-// Login / SignUp бутон
-document.getElementById("loginBtn").addEventListener("click", async () => {
-  const email = document.getElementById("email").value;
-  const pass = document.getElementById("pass").value;
-  const msgDiv = document.getElementById("loginMsg");
-
-  if(!email || !pass){
-    msgDiv.innerText = "Въведи email и password!";
-    return;
-  }
-
-  // Опит за login
-  const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
-
-  if(error && error.message.includes("User not found")){
-    // Създаване на акаунт
-    const res = await supabase.auth.signUp({ email, password: pass });
-    if(res.error){
-      msgDiv.innerText = "Грешка при регистрация: " + res.error.message;
+    if(!email || !pass){
+      msgDiv.innerText = "Въведи email и password!";
       return;
     }
-    msgDiv.innerText = "Акаунт създаден! Натисни Login пак.";
-    return;
-  } else if(error){
-    msgDiv.innerText = "Login грешка: " + error.message;
-    return;
-  }
 
-  // Успешен login
-  user = data.user;
-  document.getElementById("loginDiv").style.display = "none";
-  document.getElementById("app").style.display = "block";
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
+
+    if(error && error.message.includes("User not found")){
+      const res = await supabase.auth.signUp({ email, password: pass });
+      if(res.error){
+        msgDiv.innerText = "Грешка при регистрация: " + res.error.message;
+        return;
+      }
+      msgDiv.innerText = "Акаунт създаден! Натисни Login пак.";
+      return;
+    } else if(error){
+      msgDiv.innerText = "Login грешка: " + error.message;
+      return;
+    }
+
+    user = data.user;
+    document.getElementById("loginDiv").style.display = "none";
+    document.getElementById("app").style.display = "block";
+  });
 });
-</script>
-
-</body>
-</html>
