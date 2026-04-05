@@ -3,222 +3,226 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BudgetCloud_REAL_FIXED_v5</title>
-
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
+<title>💰 BudgetCloud_Supabase_v1</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
 <style>
-body { font-family:Arial; background:#0f172a; color:white; text-align:center; }
-
-button {
-  padding:6px 8px;
-  margin:2px;
-  border:none;
-  border-radius:5px;
-  cursor:pointer;
-  font-size:13px;
-}
-
-.card {
-  background:#1e293b;
-  margin:3px;
-  padding:4px;
-  border-radius:5px;
-  font-size:12px;
-  line-height:1.2;
-}
-
-.balance { font-size:24px; margin:8px; }
-
-.analysis {
-  background:#020617;
-  padding:8px;
-  margin:8px;
-  border-radius:8px;
-  font-size:13px;
-}
-
-select {
-  padding:4px;
-  font-size:13px;
-}
-
-@media print {
-  body { background:white; color:black; }
-  button, select { display:none; }
-}
+body { font-family: Arial; background:#0f172a; color:white; text-align:center; margin:0; padding:0;}
+input, button, select { padding:8px; margin:4px; font-size:16px;}
+button { cursor:pointer; }
+#transactions div { display:flex; justify-content:space-between; margin:2px 0; padding:4px; border-bottom:1px solid #555;}
+#transactions { max-width:400px; margin:auto; }
+#summary div { margin:2px 0; }
 </style>
 </head>
-
 <body>
 
-<h3>💰 BudgetCloud_REAL_FIXED_v5</h3>
+<h2>💰 BudgetCloud_Supabase_v1</h2>
 
-<div class="balance" id="balance">0.00 €</div>
+<div id="loginDiv">
+<input id="email" placeholder="email">
+<input id="pass" type="password" placeholder="password">
+<button onclick="login()">Login / SignUp</button>
+</div>
 
-<select id="profileFilter" onchange="render()">
-  <option value="all">Всички</option>
-  <option value="лични">Лични</option>
-  <option value="служебен">Служебен</option>
-</select>
+<div id="app" style="display:none;">
+<h3 id="balance">0 €</h3>
+<button onclick="addTransaction('income')">+ Доход</button>
+<button onclick="addTransaction('expense')">- Разход</button>
+<button onclick="addTransaction('bonus')">💎 Бонус</button>
 
-<br>
+<h4>Профил:</h4>
+<select id="profileSelect"></select>
 
-<button onclick="addIncome()">+ Доход</button>
-<button onclick="addExpense()">- Разход</button>
-<button onclick="addBonus()">💎 Бонус</button>
-<button onclick="window.print()">🖨️ Печат</button>
+<h4>Транзакции:</h4>
+<div id="transactions"></div>
 
-<div id="list"></div>
+<h4>📊 Разходи по категории:</h4>
+<div id="summary"></div>
 
-<div class="analysis">
-  <b>📊 Разходи по категории</b>
-  <div id="analysis"></div>
-  <canvas id="chart"></canvas>
+<h4>Месечна разбивка:</h4>
+<select id="monthSelect"></select>
+<div id="monthlyAnalysis"></div>
 </div>
 
 <script>
-let transactions = [];
-let chart;
+const supabaseUrl = "https://ipihscvyyxetkiajjllg.supabase.co";
+const supabaseKey = "sb_publishable_r7Bgf2u5ZK30-DQVHPSHHQ_xgnsXY2x";
+const supabase = supabase.createClient(supabaseUrl, supabaseKey);
 
-// категории
-function autoCategory(name){
-  let n = name.toLowerCase();
-  if(n.includes("пица") || n.includes("храна")) return "храна";
-  if(n.includes("ток")) return "ток";
-  if(n.includes("пазар")) return "пазар";
-  return name;
-}
+let user = null;
+let profiles = [];
 
-// профил
-function askProfile(){
-  let p = prompt("Профил: лични или служебен?");
-  if(!p) return "лични";
-  return p.toLowerCase().includes("служ") ? "служебен" : "лични";
-}
+window.onload = async () => {
+  const { data } = await supabase.auth.getSession();
+  if(data.session){
+    user = data.session.user;
+    document.getElementById("loginDiv").style.display="none";
+    document.getElementById("app").style.display="block";
+    await loadProfiles();
+    await loadTransactions();
+    await loadMonths();
+  }
+};
 
-// ➕ ДОХОД
-function addIncome(){
-  let name = prompt("Доход от?");
-  if(!name) return;
+// LOGIN / SIGNUP
+async function login(){
+  const email = document.getElementById("email").value;
+  const pass = document.getElementById("pass").value;
 
-  let profile = askProfile();
-
-  let val = parseFloat(prompt("Сума:").replace(",", "."));
-  if(isNaN(val)) return;
-
-  addTransaction(name, val, profile);
-}
-
-// ➖ РАЗХОД
-function addExpense(){
-  let name = prompt("Разход за?");
-  if(!name) return;
-
-  name = autoCategory(name);
-
-  let profile = askProfile();
-
-  let val = -Math.abs(parseFloat(prompt("Сума:").replace(",", ".")));
-  if(isNaN(val)) return;
-
-  addTransaction(name, val, profile);
-}
-
-// 💎 БОНУС (ВЪРНАТ както беше)
-function addBonus(){
-  let val = parseFloat(prompt("Бонус:").replace(",", "."));
-  if(isNaN(val)) return;
-
-  let profile = askProfile();
-
-  addTransaction("бонус", val, profile);
-}
-
-// запис
-function addTransaction(name, amount, profile){
-  transactions.push({
-    id: Date.now(),
-    name,
-    amount,
-    profile
-  });
-
-  render();
-}
-
-// delete
-function del(id){
-  transactions = transactions.filter(t => t.id !== id);
-  render();
-}
-
-// render
-function render(){
-  let bal=0;
-  let cats={};
-
-  const filter = document.getElementById("profileFilter").value;
-
-  const list = document.getElementById("list");
-  list.innerHTML="";
-
-  transactions.forEach(t=>{
-
-    if(filter !== "all" && t.profile !== filter) return;
-
-    bal += t.amount;
-
-    if(t.amount < 0){
-      if(!cats[t.name]) cats[t.name]=0;
-      cats[t.name]+=Math.abs(t.amount);
+  let { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
+  if(error){
+    // опит за създаване на акаунт
+    let res = await supabase.auth.signUp({ email, password: pass });
+    if(res.error){
+      alert("Грешка: " + res.error.message);
+      return;
     }
+    alert("Създаден акаунт! Влез отново.");
+    return;
+  }
+  user = data.user;
+  document.getElementById("loginDiv").style.display="none";
+  document.getElementById("app").style.display="block";
+  await loadProfiles();
+  await loadTransactions();
+  await loadMonths();
+}
 
+// LOAD PROFILES
+async function loadProfiles(){
+  const { data } = await supabase.from("profiles").select("*").eq("user_id", user.id);
+  profiles = data || [];
+  const select = document.getElementById("profileSelect");
+  select.innerHTML="";
+  if(profiles.length===0){
+    // създаване на базови профили
+    const defaultProfiles = ["Лични","Служебен"];
+    for(let p of defaultProfiles){
+      await supabase.from("profiles").insert({ user_id:user.id, name:p });
+    }
+    return loadProfiles();
+  }
+  for(let p of profiles){
+    let opt = document.createElement("option");
+    opt.value=p.id;
+    opt.innerText=p.name;
+    select.appendChild(opt);
+  }
+}
+
+// LOAD TRANSACTIONS
+async function loadTransactions(){
+  let { data } = await supabase.from("transactions").select("*").eq("user_id", user.id);
+  data = data || [];
+  renderTransactions(data);
+  renderSummary(data);
+}
+
+// RENDER TRANSACTIONS
+function renderTransactions(data){
+  const container = document.getElementById("transactions");
+  container.innerHTML="";
+  for(let t of data){
     const div = document.createElement("div");
-    div.className="card";
-    div.innerHTML = `
-      ${t.name} | ${t.profile} | ${t.amount.toFixed(2)} €
-      <button onclick="del(${t.id})">❌</button>
-    `;
-    list.appendChild(div);
+    div.innerHTML = `<span>${t.name} (${t.profile}): ${t.amount.toFixed(2)} €</span>
+                     <button onclick="deleteTransaction('${t.id}')">🗑️</button>`;
+    container.appendChild(div);
+  }
+}
+
+// DELETE TRANSACTION
+async function deleteTransaction(id){
+  await supabase.from("transactions").delete().eq("id", id);
+  await loadTransactions();
+  await loadMonths();
+}
+
+// ADD TRANSACTION
+async function addTransaction(type){
+  let name = prompt("Категория / име:");
+  if(!name) return;
+  let valStr = prompt("Сума:");
+  if(!valStr) return;
+  let val = parseFloat(valStr.replace(",","."));
+  if(isNaN(val)) return;
+  if(type==="expense") val = -Math.abs(val);
+  if(type==="bonus") val = Math.abs(val);
+  const profileId = document.getElementById("profileSelect").value;
+  const profileName = profiles.find(p=>p.id===profileId)?.name || "Лични";
+  await supabase.from("transactions").insert({
+    user_id:user.id,
+    profile: profileName,
+    name: name,
+    amount: val,
+    created_at: new Date()
   });
+  await loadTransactions();
+  await loadMonths();
+}
 
-  document.getElementById("balance").innerText = bal.toFixed(2)+" €";
+// SUMMARY BY CATEGORY
+function renderSummary(data){
+  const summaryDiv = document.getElementById("summary");
+  summaryDiv.innerHTML="";
+  const categories = {};
+  let bonus = 0;
+  let income = 0;
+  let expense = 0;
 
-  // анализ
-  const aDiv = document.getElementById("analysis");
-  aDiv.innerHTML="";
+  for(let t of data){
+    if(t.name.toLowerCase().includes("bonus")) bonus += t.amount;
+    else if(t.amount>0) income += t.amount;
+    else expense += Math.abs(t.amount);
 
-  let labels=[], values=[];
-
-  for(let c in cats){
-    labels.push(c);
-    values.push(cats[c]);
-
-    let p=document.createElement("div");
-    p.innerText = c + ": " + cats[c].toFixed(2)+" €";
-    aDiv.appendChild(p);
+    let key = t.name.toLowerCase();
+    categories[key] = (categories[key]||0) + Math.abs(t.amount);
   }
 
-  draw(labels, values);
+  for(let cat in categories){
+    let div = document.createElement("div");
+    div.innerText = `${cat}: ${categories[cat].toFixed(2)} €`;
+    summaryDiv.appendChild(div);
+  }
+
+  const bal = income - expense + bonus;
+  document.getElementById("balance").innerText = bal.toFixed(2) + " €";
 }
 
-// графика
-function draw(labels, values){
-  const ctx = document.getElementById("chart");
+// MONTHLY BREAKDOWN
+async function loadMonths(){
+  const { data } = await supabase.from("transactions")
+                     .select("created_at")
+                     .eq("user_id", user.id);
+  const months = [...new Set((data||[]).map(d=>new Date(d.created_at).toISOString().slice(0,7)))].sort().reverse();
+  const monthSelect = document.getElementById("monthSelect");
+  monthSelect.innerHTML="";
+  for(let m of months){
+    let opt = document.createElement("option");
+    opt.value=m;
+    opt.innerText=m;
+    monthSelect.appendChild(opt);
+  }
+  if(months.length>0) renderMonthly(months[0]);
+  monthSelect.onchange = ()=>renderMonthly(monthSelect.value);
+}
 
-  if(chart) chart.destroy();
-
-  chart = new Chart(ctx,{
-    type:"bar",
-    data:{
-      labels:labels,
-      datasets:[{
-        data:values,
-        backgroundColor:"#ef4444"
-      }]
-    }
-  });
+async function renderMonthly(month){
+  const { data } = await supabase.from("transactions")
+                     .select("*")
+                     .eq("user_id", user.id);
+  const filtered = (data||[]).filter(t=>t.created_at.startsWith(month));
+  const container = document.getElementById("monthlyAnalysis");
+  container.innerHTML="";
+  let total = 0;
+  for(let t of filtered){
+    const div = document.createElement("div");
+    div.innerText = `${t.name} (${t.profile}): ${t.amount.toFixed(2)} €`;
+    container.appendChild(div);
+    total += t.amount;
+  }
+  const totalDiv = document.createElement("div");
+  totalDiv.innerHTML = `<b>Общо за ${month}: ${total.toFixed(2)} €</b>`;
+  container.appendChild(totalDiv);
 }
 </script>
 
