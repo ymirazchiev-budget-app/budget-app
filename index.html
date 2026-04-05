@@ -3,26 +3,17 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BudgetCloud_MAX_v3</title>
-
+<title>BudgetCloud_LoginStable</title>
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
 <style>
 body { font-family:Arial; background:#0f172a; color:white; text-align:center; }
 button { padding:10px; margin:5px; border:none; border-radius:5px; cursor:pointer; }
 input { padding:10px; margin:5px; border-radius:5px; }
-.card { background:#1e293b; margin:10px; padding:10px; border-radius:10px; text-align:left; }
-.balance { font-size:30px; margin:10px 0; }
-.income { color: #22c55e; }
-.expense { color: #ef4444; }
-.bonus { color: #facc15; }
 </style>
 </head>
-
 <body>
 
-<h2>💰 BudgetCloud_MAX_v3</h2>
+<h2>💰 BudgetCloud_LoginStable</h2>
 
 <div id="login">
   <input id="email" placeholder="Email">
@@ -31,19 +22,7 @@ input { padding:10px; margin:5px; border-radius:5px; }
 </div>
 
 <div id="app" style="display:none;">
-  <div class="balance" id="balance">0.00 €</div>
-
-  <button onclick="add('income')">+ Доход</button>
-  <button onclick="add('expense')">- Разход</button>
-  <button onclick="add('bonus')">💎 Бонус</button>
-
-  <div id="list"></div>
-
-  <div class="card">
-    <h3>📊 Разходи по категории:</h3>
-    <div id="analysis"></div>
-    <canvas id="chart" style="max-width:400px; margin:auto;"></canvas>
-  </div>
+  <h1 id="welcome">Добре дошъл!</h1>
 </div>
 
 <script>
@@ -53,20 +32,19 @@ const supabase = supabase.createClient(
 );
 
 let user;
-let chart;
 
-// Автоматичен login ако има сесия
+// ✅ Автоматичен login ако вече има сесия
 window.onload = async () => {
   const { data } = await supabase.auth.getSession();
   if(data.session){
     user = data.session.user;
-    document.getElementById("login").style.display="none";
-    document.getElementById("app").style.display="block";
-    load();
+    document.getElementById("login").style.display = "none";
+    document.getElementById("app").style.display = "block";
+    document.getElementById("welcome").innerText = "Влязъл си като: " + user.email;
   }
 };
 
-// Login бутон
+// ✅ Login бутон
 document.getElementById("loginBtn").onclick = async () => {
   const email = document.getElementById("email").value;
   const pass = document.getElementById("pass").value;
@@ -76,7 +54,7 @@ document.getElementById("loginBtn").onclick = async () => {
   const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
 
   if(error){
-    // опит за signup ако user не съществува
+    // Ако няма акаунт, създаваме
     const res = await supabase.auth.signUp({ email, password: pass });
     if(res.error){ alert("Грешка: " + res.error.message); return; }
     alert("Акаунт създаден! Натисни Login пак.");
@@ -84,124 +62,10 @@ document.getElementById("loginBtn").onclick = async () => {
   }
 
   user = data.user;
-  document.getElementById("login").style.display="none";
-  document.getElementById("app").style.display="block";
-  load();
+  document.getElementById("login").style.display = "none";
+  document.getElementById("app").style.display = "block";
+  document.getElementById("welcome").innerText = "Влязъл си като: " + user.email;
 };
-
-// Зареждане на транзакции
-async function load(){
-  const { data: transactions } = await supabase
-    .from("transactions")
-    .select("*")
-    .eq("user_id", user.id)
-    .order('created_at', {ascending:true});
-
-  render(transactions || []);
-}
-
-// Рендер на транзакции
-function render(data){
-  let bal=0, inc=0, exp=0, bonus=0;
-  let categories = {};
-
-  const list = document.getElementById("list");
-  list.innerHTML="";
-
-  data.forEach(d=>{
-    let amount = parseFloat(d.amount);
-    if(d.name.toLowerCase()==="bonus"){ bonus += amount; }
-    else if(amount>0){ inc += amount; bal += amount; }
-    else { exp += Math.abs(amount); bal += amount; }
-
-    // категории само за разход
-    if(amount<0){
-      const cat = d.name.toLowerCase();
-      if(!categories[cat]) categories[cat]=0;
-      categories[cat]+=Math.abs(amount);
-    }
-
-    // карта транзакция с бутон за изтриване
-    const div = document.createElement("div");
-    div.className="card";
-    div.innerHTML = `
-      ${d.name} <b class="${amount>0?'income':amount<0?'expense':'bonus'}">${amount.toFixed(2)} €</b>
-      <button onclick="del('${d.id}')">❌</button>
-    `;
-    list.appendChild(div);
-  });
-
-  document.getElementById("balance").innerText = bal.toFixed(2) + " €";
-
-  // Анализ категории
-  const analysisDiv = document.getElementById("analysis");
-  analysisDiv.innerHTML="";
-  let topCat="", max=0;
-  for(let c in categories){
-    const val = categories[c];
-    const p = document.createElement("div");
-    p.innerText = `${c}: ${val.toFixed(2)} €`;
-    analysisDiv.appendChild(p);
-    if(val>max){ max=val; topCat=c; }
-  }
-  if(topCat){
-    const top = document.createElement("div");
-    top.innerHTML = "<b>Най-много харчиш за: " + topCat + " (" + max.toFixed(2) + " €)</b>";
-    analysisDiv.appendChild(top);
-  }
-
-  drawChart(inc, exp, bonus);
-}
-
-// Изтриване на транзакция
-async function del(id){
-  if(!confirm("Сигурен ли си, че искаш да изтриеш?")) return;
-  await supabase.from("transactions").delete().eq('id', id);
-  load();
-}
-
-// Добавяне на транзакция
-async function add(type){
-  let name = prompt("Категория:");
-  if(!name) name = type;
-
-  let val = parseFloat(prompt("Сума:").replace(',', '.'));
-  if(isNaN(val)) return;
-
-  if(type==="expense") val=-val;
-  if(type==="bonus") val = val;
-
-  await supabase.from("transactions").insert({
-    user_id: user.id,
-    name: name,
-    amount: val,
-    created_at: new Date().toISOString()
-  });
-
-  load();
-}
-
-// Графика
-function drawChart(inc, exp, bonus){
-  const ctx = document.getElementById("chart");
-  if(chart) chart.destroy();
-
-  chart = new Chart(ctx,{
-    type:'bar',
-    data:{
-      labels:['Доход','Разход','Бонус'],
-      datasets:[{
-        label:'€',
-        data:[inc,exp,bonus],
-        backgroundColor:['#22c55e','#ef4444','#facc15']
-      }]
-    },
-    options:{
-      responsive:true,
-      plugins:{legend:{display:false}}
-    }
-  });
-}
 </script>
 
 </body>
