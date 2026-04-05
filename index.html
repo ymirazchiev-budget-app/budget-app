@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-<title>Budget Cloud v2.1 🔑</title>
+<title>Budget Cloud v2.2 🔑</title>
 <style>
 body { font-family:Arial; background:#0f172a; color:white; text-align:center; padding:20px; }
 input, button { padding:10px; margin:5px; border-radius:5px; border:none; }
@@ -14,7 +14,7 @@ input, button { padding:10px; margin:5px; border-radius:5px; border:none; }
 </head>
 <body>
 
-<h2>💰 Budget Cloud v2.1 🔑</h2>
+<h2>💰 Budget Cloud v2.2 🔑</h2>
 
 <div id="loginDiv">
   <input id="email" placeholder="email">
@@ -25,7 +25,7 @@ input, button { padding:10px; margin:5px; border-radius:5px; border:none; }
 
 <div id="app">
   <h3>Влязохте успешно!</h3>
-  <p>Тук ще се зарежда приложението.</p>
+  <p>Тук ще се зарежда приложението и данните.</p>
 </div>
 
 <script>
@@ -36,12 +36,24 @@ const supabase = supabase.createClient(
 
 let user = null;
 
+// Проверка при зареждане на страницата
+window.onload = async () => {
+  const { data: { session } } = await supabase.auth.getSession();
+  if(session){
+    user = session.user;
+    document.getElementById("loginDiv").style.display = "none";
+    document.getElementById("app").style.display = "block";
+  }
+};
+
+// Login / SignUp бутон
 document.getElementById("loginBtn").addEventListener("click", async () => {
   const email = document.getElementById("email").value;
   const pass = document.getElementById("pass").value;
+  const msgDiv = document.getElementById("loginMsg");
 
   if(!email || !pass){
-    document.getElementById("loginMsg").innerText = "Въведи email и password!";
+    msgDiv.innerText = "Въведи email и password!";
     return;
   }
 
@@ -52,13 +64,13 @@ document.getElementById("loginBtn").addEventListener("click", async () => {
     // Създаване на акаунт
     const res = await supabase.auth.signUp({ email, password: pass });
     if(res.error){
-      document.getElementById("loginMsg").innerText = "Грешка при регистрация: " + res.error.message;
+      msgDiv.innerText = "Грешка при регистрация: " + res.error.message;
       return;
     }
-    document.getElementById("loginMsg").innerText = "Акаунт създаден! Натисни Login пак.";
+    msgDiv.innerText = "Акаунт създаден! Натисни Login пак.";
     return;
   } else if(error){
-    document.getElementById("loginMsg").innerText = "Login грешка: " + error.message;
+    msgDiv.innerText = "Login грешка: " + error.message;
     return;
   }
 
