@@ -3,250 +3,185 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Budget Cloud MAX++</title>
-<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<title>Budget MAX++</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <style>
-body { font-family:Arial; background:#0f172a; color:white; text-align:center; margin:0; }
-button,input,select{ padding:8px; margin:5px; border:none; border-radius:6px; }
-.card { background:#1e293b; margin:10px; padding:10px; border-radius:10px; }
-.header{padding:15px;}
+body { margin:0; font-family:Arial; background:#0f172a; color:white; text-align:center; }
+button, select, input { padding:8px; margin:5px; border:none; border-radius:8px; }
+.card { background:#1e293b; margin:10px; padding:10px; border-radius:10px; text-align:left; }
+#chartsContainer { width:90%; margin:auto; }
 </style>
 </head>
 <body>
 
 <div id="login">
-  <h2>🔐 Вход</h2>
-  <input id="email" placeholder="email">
-  <input id="pass" type="password" placeholder="password">
-  <button onclick="login()">Login</button>
+<h2>🔐 Budget Cloud Login</h2>
+<input id="email" placeholder="email">
+<input id="pass" type="password" placeholder="password">
+<button onclick="login()">Login</button>
 </div>
 
 <div id="app" style="display:none;">
-  <div class="header">
-    <h2>💰 Budget Cloud MAX++</h2>
-    <select id="profileSelect" onchange="switchProfile()"></select>
-    <button onclick="addProfile()">+ Профил</button>
-    <div class="balance" id="balance">0 €</div>
-  </div>
+<div class="card">
+<h2>💰 Budget MAX++</h2>
+<select id="profile" onchange="switchProfile()"></select>
+<button onclick="addProfile()">+ Профил</button>
+<select id="month" onchange="load()"></select>
+<div>Баланс: <span id="balance">0 €</span> | Бонус: <span id="bonusBalance">0 €</span></div>
+</div>
 
-  <button onclick="add('income')">+ Доход</button>
-  <button onclick="add('expense')">- Разход</button>
-  <button onclick="add('bonus')">🎁 Бонус</button>
+<button onclick="add('income')">+ Доход</button>
+<button onclick="add('expense')">- Разход</button>
+<button onclick="add('bonus')">🎁 Бонус</button>
 
-  <div class="card">
-    <canvas id="chart"></canvas>
-  </div>
-
-  <div class="card">
-    <h3>📊 Разходи по категории</h3>
-    <div id="analysis"></div>
-  </div>
-
-  <div class="card">
-    <h3>🗓 Месечен отчет</h3>
-    <select id="monthSelect" onchange="load()"></select>
-    <div id="monthReport"></div>
-  </div>
-
-  <div id="list"></div>
+<div id="list"></div>
+<div id="analysis" class="card"></div>
+<div id="chartsContainer">
+<canvas id="chart"></canvas>
+</div>
 </div>
 
 <script>
+// === Supabase setup ===
 const supabase = supabase.createClient(
   "https://ipihscvyyxetkiajjllg.supabase.co",
   "sb_publishable_r7Bgf2u5ZK30-DQVHPSHHQ_xgnsXY2x"
 );
 
-let user;
-let profiles = {};
-let currentProfile = "Лични";
-let chart;
+let user, profiles = {}, currentProfile;
 
+// === Auto-login if session exists ===
 window.onload = async () => {
-  const { data } = await supabase.auth.getSession();
-  if(data.session){
-    user = data.session.user;
+  try {
+    const { data } = await supabase.auth.getSession();
+    if(data.session){
+      user = data.session.user;
+      document.getElementById("login").style.display="none";
+      document.getElementById("app").style.display="block";
+      await loadProfiles();
+      populateMonthSelect();
+      load();
+    }
+  } catch(e){ console.log("Автоматичен Login failed", e); }
+};
+
+// === Login ===
+async function login(){
+  const email=document.getElementById("email").value;
+  const pass=document.getElementById("pass").value;
+  try {
+    const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
+    if(error){ alert("Login грешка: " + error.message); return; }
+    user = data.user;
     document.getElementById("login").style.display="none";
     document.getElementById("app").style.display="block";
     await loadProfiles();
     populateMonthSelect();
     load();
-  }
-};
-
-async function login(){
-  const email=document.getElementById("email").value;
-  const pass=document.getElementById("pass").value;
-
-  let { data, error } = await supabase.auth.signInWithPassword({ email, password:pass });
-  if(error){ alert("Login грешка: " + error.message); return; }
-
-  user = data.user;
-  document.getElementById("login").style.display="none";
-  document.getElementById("app").style.display="block";
-
-  await loadProfiles();
-  populateMonthSelect();
-  load();
+  } catch(e){ alert("Login error: " + e.message); }
 }
 
+// === Profiles ===
 async function loadProfiles(){
-  // Зареждане на профили (от транзакции)
-  let { data } = await supabase.from("transactions").select("profile").eq("user_id", user.id);
+  const { data } = await supabase.from("transactions").select("profile").eq("user_id", user.id);
   profiles = {};
-  data.forEach(d => profiles[d.profile] = true);
-  if(Object.keys(profiles).length===0) profiles["Лични"]=true;
-
+  data.forEach(t=>{ profiles[t.profile] = 1; });
+  if(Object.keys(profiles).length===0) profiles["Лични"]=1;
   currentProfile = Object.keys(profiles)[0];
-  renderProfileSelect();
+  renderProfiles();
 }
-
-function renderProfileSelect(){
-  let sel=document.getElementById("profileSelect");
-  sel.innerHTML="";
+function renderProfiles(){
+  let sel = document.getElementById("profile"); sel.innerHTML="";
   Object.keys(profiles).forEach(p=>{
-    let o=document.createElement("option");
-    o.value=p; o.innerText=p;
-    sel.appendChild(o);
+    let o=document.createElement("option"); o.value=p; o.innerText=p; sel.appendChild(o);
   });
   sel.value=currentProfile;
 }
-
-function switchProfile(){
-  currentProfile=document.getElementById("profileSelect").value;
+function switchProfile(){ currentProfile=document.getElementById("profile").value; load(); }
+function addProfile(){
+  let name=prompt("Име на профил:");
+  if(!name) return;
+  profiles[name]=1;
+  currentProfile=name;
+  renderProfiles();
   load();
 }
 
-function addProfile(){
-  let name = prompt("Име на профил:");
-  if(!name) return;
-  profiles[name]=true;
-  currentProfile=name;
-  renderProfileSelect();
-}
-
+// === Month select ===
 function populateMonthSelect(){
-  const sel = document.getElementById("monthSelect");
-  sel.innerHTML="";
-  const now = new Date();
+  let sel=document.getElementById("month"); sel.innerHTML="";
+  let now=new Date();
   for(let i=0;i<12;i++){
-    let d = new Date(now.getFullYear(), i, 1);
-    let opt = document.createElement("option");
-    opt.value = d.toISOString().substr(0,7); // YYYY-MM
-    opt.innerText = d.toLocaleString('default',{month:'long', year:'numeric'});
-    sel.appendChild(opt);
+    let d=new Date(now.getFullYear(),i,1);
+    let o=document.createElement("option");
+    o.value=d.toISOString().slice(0,7); // yyyy-mm
+    o.innerText=d.toLocaleString('bg',{month:'long', year:'numeric'});
+    sel.appendChild(o);
   }
-  sel.value = now.toISOString().substr(0,7);
+  sel.value=now.toISOString().slice(0,7);
 }
 
+// === Load transactions ===
+let chart;
 async function load(){
-  if(!user) return;
-  const month = document.getElementById("monthSelect").value;
-  const start = month+"-01T00:00:00Z";
-  const end = new Date(new Date(month+"-01").getFullYear(), new Date(month+"-01").getMonth()+1,1).toISOString();
-
-  const { data } = await supabase
-    .from("transactions")
+  let month=document.getElementById("month").value;
+  let { data } = await supabase.from("transactions")
     .select("*")
     .eq("user_id", user.id)
     .eq("profile", currentProfile)
-    .gte("created_at", start)
-    .lt("created_at", end);
-
-  render(data || []);
-  renderMonthReport(data || []);
+    .gte("created_at", month+"-01")
+    .lt("created_at", month+"-32");
+  render(data||[]);
 }
 
+// === Render transactions and analysis ===
 function render(data){
   let bal=0, inc=0, exp=0, bonus=0;
-  let cats = {};
-  const list=document.getElementById("list");
-  list.innerHTML="";
-
-  data.forEach(d=>{
-    let amount = Number(d.amount);
-    if(d.type==="bonus") bonus+=amount;
-    else if(amount>0) inc+=amount;
-    else { exp+=Math.abs(amount); cats[d.name]=(cats[d.name]||0)+Math.abs(amount); }
-    if(d.type!=="bonus") bal+=amount;
-
-    let div=document.createElement("div");
-    div.className="card";
-    div.innerHTML=`${d.name} <b style="color:${amount<0?'red':'lightgreen'}">${amount.toFixed(2)} €</b>
-      <button onclick="del('${d.id}')">❌</button>`;
+  let cats={};
+  let list=document.getElementById("list"); list.innerHTML="";
+  data.forEach((d,i)=>{
+    let amount=parseFloat(d.amount);
+    if(d.name==="bonus"){ bonus+=amount; }
+    else{ bal+=amount; if(amount>0) inc+=amount; else { exp+=Math.abs(amount); cats[d.name]=(cats[d.name]||0)+Math.abs(amount); } }
+    let div=document.createElement("div"); div.className="card";
+    div.innerHTML=`${d.name}: ${amount.toFixed(2)} € <button onclick="del('${d.id}')">❌</button>`;
     list.appendChild(div);
   });
+  document.getElementById("balance").innerText=bal.toFixed(2)+" €";
+  document.getElementById("bonusBalance").innerText=bonus.toFixed(2)+" €";
 
-  document.getElementById("balance").innerText=(bal+bonus).toFixed(2)+" €";
-
-  // Анализ по категории
-  let analysis=document.getElementById("analysis");
-  analysis.innerHTML="";
+  // analysis
+  let analysisDiv=document.getElementById("analysis");
+  analysisDiv.innerHTML="<h3>📊 Разходи по категории:</h3>";
   let topCat="", max=0;
   for(let c in cats){
     let val=cats[c];
-    let p=document.createElement("div");
-    p.innerText=c+": "+val.toFixed(2)+" €";
-    analysis.appendChild(p);
+    let p=document.createElement("div"); p.innerText=c+": "+val.toFixed(2)+" €"; analysisDiv.appendChild(p);
     if(val>max){ max=val; topCat=c; }
   }
-  if(topCat){
-    let top=document.createElement("div");
-    top.innerHTML="<b>Най-много харчиш за: "+topCat+" ("+max.toFixed(2)+" €)</b>";
-    analysis.appendChild(top);
-  }
+  if(topCat){ let top=document.createElement("div"); top.innerHTML="<br><b>Най-много харчиш за: "+topCat+" ("+max.toFixed(2)+" €)</b>"; analysisDiv.appendChild(top); }
 
-  // Чарт
-  const ctx=document.getElementById("chart");
-  if(chart) chart.destroy();
-  chart=new Chart(ctx,{
-    type:'line',
-    data:{
-      labels:['Доход','Разход','Бонус'],
-      datasets:[{
-        label:'Сума',
-        data:[inc,exp,bonus],
-        borderColor:['#22c55e','#ef4444','#facc15'],
-        fill:false
-      }]
-    }
-  });
+  // chart
+  let ctx=document.getElementById("chart"); if(chart) chart.destroy();
+  chart=new Chart(ctx,{ type:'line', data:{ labels:['Доход','Разход','Бонус'], datasets:[{ label:'Сума', data:[inc,exp,bonus], borderColor:'#22c55e', backgroundColor:'#22c5550', fill:false }]}, options:{ responsive:true }});
 }
 
-function renderMonthReport(data){
-  let report=document.getElementById("monthReport");
-  let totalInc=0, totalExp=0, totalBonus=0;
-  data.forEach(d=>{
-    let amt=Number(d.amount);
-    if(d.type==="bonus") totalBonus+=amt;
-    else if(amt>0) totalInc+=amt;
-    else totalExp+=Math.abs(amt);
-  });
-  report.innerHTML=`Доход: ${totalInc.toFixed(2)} €<br>Разход: ${totalExp.toFixed(2)} €<br>Бонус: ${totalBonus.toFixed(2)} €`;
-}
-
+// === Add transaction ===
 async function add(type){
   let name=prompt("Категория:");
   let val=parseFloat(prompt("Сума:"));
   if(isNaN(val)) return;
-
-  await supabase.from("transactions").insert({
-    user_id:user.id,
-    profile:currentProfile,
-    name:name || type,
-    amount:val,
-    type:type
-  });
-
+  if(type==="expense") val=-val;
+  await supabase.from("transactions").insert([{ user_id:user.id, profile:currentProfile, name:name||type, amount:val, created_at:new Date().toISOString() }]);
   load();
 }
 
+// === Delete transaction ===
 async function del(id){
-  await supabase.from("transactions").delete().eq("id",id);
+  await supabase.from("transactions").delete().eq("id", id);
   load();
 }
 </script>
-
 </body>
 </html>
