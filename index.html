@@ -3,23 +3,39 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BudgetCloud_RESTORE_STABLE_v1</title>
+<title>BudgetCloud_FINAL_NO_LOGIN_v1</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
 body { font-family:Arial; background:#0f172a; color:white; text-align:center; }
-#app { display:none; margin-top:30px; }
+button { padding:10px; margin:5px; border:none; border-radius:5px; cursor:pointer; }
+input { padding:10px; margin:5px; border-radius:5px; }
+.card { background:#1e293b; margin:10px; padding:10px; border-radius:10px; }
+.income { color:#22c55e; }
+.expense { color:#ef4444; }
+.bonus { color:#facc15; }
+.balance { font-size:28px; margin:10px; }
 </style>
 </head>
 
 <body>
 
-<h2>💰 BudgetCloud_RESTORE_STABLE_v1</h2>
+<h2>💰 BudgetCloud_FINAL_NO_LOGIN_v1</h2>
 
-<div id="app">
-  <h1 id="welcome"></h1>
-  <p>✅ Влязъл си автоматично (без login)</p>
+<div class="balance" id="balance">0.00 €</div>
+
+<button onclick="add('income')">+ Доход</button>
+<button onclick="add('expense')">- Разход</button>
+<button onclick="add('bonus')">💎 Бонус</button>
+
+<div id="list"></div>
+
+<div class="card">
+  <h3>📊 Разходи по категории</h3>
+  <div id="analysis"></div>
+  <canvas id="chart"></canvas>
 </div>
 
 <script>
@@ -29,41 +45,141 @@ const supabase = window.supabase.createClient(
 );
 
 let user;
+let chart;
 
-// 👉 ТОВА Е КЛЮЧА (старото работещо поведение)
+// 🔥 АВТО LOGIN (скрит)
 async function init(){
 
-  // 1. Проверка за съществуваща сесия
   let { data } = await supabase.auth.getSession();
 
   if(data.session){
     user = data.session.user;
-    startApp();
+    load();
     return;
   }
 
-  // 2. Ако няма сесия → автоматичен login (ЕДИН ПЪТ)
-  const email = "u2m@mail.bg";
-  const password = "12345678"; // сложи твоята реална парола
-
-  let res = await supabase.auth.signInWithPassword({
-    email,
-    password
+  // 🔑 използва твоя акаунт автоматично
+  const res = await supabase.auth.signInWithPassword({
+    email: "u2m@mail.bg",
+    password: "12345678" // сложи реалната си парола
   });
 
   if(res.error){
-    console.log("Login error:", res.error.message);
+    alert("❌ Провери email/password веднъж");
     return;
   }
 
   user = res.data.user;
-  startApp();
+  load();
 }
 
-// 👉 стартира app без login UI
-function startApp(){
-  document.getElementById("app").style.display = "block";
-  document.getElementById("welcome").innerText = "Влязъл си като: " + user.email;
+// ➕ добавяне
+async function add(type){
+  let name = prompt("Име:");
+  if(!name) return;
+
+  let val = parseFloat(prompt("Сума:").replace(",", "."));
+  if(isNaN(val)) return;
+
+  if(type==="expense") val = -val;
+
+  // 🔥 авто категории
+  const n = name.toLowerCase();
+  if(n.includes("храна") || n.includes("пица")) name="храна";
+  if(n.includes("ток")) name="ток";
+
+  await supabase.from("transactions").insert({
+    user_id: user.id,
+    name,
+    amount: val,
+    created_at: new Date()
+  });
+
+  load();
+}
+
+// ❌ изтриване
+async function del(id){
+  await supabase.from("transactions").delete().eq("id", id);
+  load();
+}
+
+// 📊 load
+async function load(){
+  const { data } = await supabase
+    .from("transactions")
+    .select("*")
+    .eq("user_id", user.id)
+    .order("created_at", {ascending:true});
+
+  render(data || []);
+}
+
+// 🎨 render
+function render(data){
+  let bal=0, inc=0, exp=0;
+  let cats={};
+
+  const list = document.getElementById("list");
+  list.innerHTML="";
+
+  data.forEach(d=>{
+    let a = Number(d.amount);
+    bal += a;
+
+    if(a>0) inc+=a;
+    else exp+=Math.abs(a);
+
+    if(a<0){
+      if(!cats[d.name]) cats[d.name]=0;
+      cats[d.name]+=Math.abs(a);
+    }
+
+    const div = document.createElement("div");
+    div.className="card";
+    div.innerHTML = `
+      ${d.name} 
+      <b class="${a>0?'income':'expense'}">${a.toFixed(2)} €</b>
+      <button onclick="del('${d.id}')">❌</button>
+    `;
+    list.appendChild(div);
+  });
+
+  document.getElementById("balance").innerText = bal.toFixed(2)+" €";
+
+  // категории
+  const aDiv = document.getElementById("analysis");
+  aDiv.innerHTML="";
+  let labels=[], values=[];
+
+  for(let c in cats){
+    labels.push(c);
+    values.push(cats[c]);
+
+    let p=document.createElement("div");
+    p.innerText = c + ": " + cats[c].toFixed(2)+" €";
+    aDiv.appendChild(p);
+  }
+
+  draw(labels, values);
+}
+
+// 📊 графика (НЕ кръгла)
+function draw(labels, values){
+  const ctx = document.getElementById("chart");
+
+  if(chart) chart.destroy();
+
+  chart = new Chart(ctx,{
+    type:"bar",
+    data:{
+      labels:labels,
+      datasets:[{
+        data:values,
+        backgroundColor:"#ef4444"
+      }]
+    }
+  });
 }
 
 // старт
