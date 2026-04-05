@@ -3,10 +3,9 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BudgetCloud_REAL_FIXED_v1</title>
+<title>BudgetCloud_REAL_FIXED_v2</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
 body { font-family:Arial; background:#0f172a; color:white; text-align:center; }
@@ -18,7 +17,7 @@ button { padding:10px; margin:5px; border:none; border-radius:5px; cursor:pointe
 
 <body>
 
-<h2>💰 BudgetCloud_REAL_FIXED_v1</h2>
+<h2>💰 BudgetCloud_REAL_FIXED_v2</h2>
 
 <div class="balance" id="balance">0.00 €</div>
 
@@ -29,13 +28,11 @@ button { padding:10px; margin:5px; border:none; border-radius:5px; cursor:pointe
 <div id="list"></div>
 
 <script>
-let transactions = []; // fallback локално
+let transactions = [];
 let supabaseClient = null;
 let user = null;
 
-// ✅ безопасно стартиране
 window.onload = async function(){
-
   try{
     if(window.supabase){
       supabaseClient = window.supabase.createClient(
@@ -44,13 +41,12 @@ window.onload = async function(){
       );
 
       const { data } = await supabaseClient.auth.getSession();
-
       if(data.session){
         user = data.session.user;
       }
     }
   }catch(e){
-    console.log("Supabase fail → работим локално");
+    console.log("Supabase fail");
   }
 
   render();
@@ -58,55 +54,75 @@ window.onload = async function(){
 
 // ➕ ДОХОД
 async function addIncome(){
-  let val = prompt("Доход:");
+  let name = prompt("От къде е дохода? (напр. заплата)");
+  if(!name) return;
+
+  let source = prompt("Източник (напр. банка / Revolut)");
+  if(!source) source = "-";
+
+  let val = prompt("Сума:");
   if(!val) return;
 
   val = parseFloat(val.replace(",", "."));
 
-  addTransaction("доход", val);
+  addTransaction(name, val, source);
 }
 
 // ➖ РАЗХОД
 async function addExpense(){
-  let val = prompt("Разход:");
+  let name = prompt("За какво е разхода? (напр. храна, ток)");
+  if(!name) return;
+
+  let source = prompt("Платено от? (карта, кеш)");
+  if(!source) source = "-";
+
+  let val = prompt("Сума:");
   if(!val) return;
 
   val = -Math.abs(parseFloat(val.replace(",", ".")));
 
-  addTransaction("разход", val);
+  addTransaction(name, val, source);
 }
 
 // 💎 БОНУС
 async function addBonus(){
-  let val = prompt("Бонус:");
+  let name = prompt("Какъв бонус?");
+  if(!name) name="бонус";
+
+  let source = prompt("От къде?");
+  if(!source) source="-";
+
+  let val = prompt("Сума:");
   if(!val) return;
 
   val = parseFloat(val.replace(",", "."));
 
-  addTransaction("бонус", val);
+  addTransaction(name, val, source);
 }
 
 // 🔥 ОБЩА функция
-async function addTransaction(name, amount){
+async function addTransaction(name, amount, source){
 
-  // 👉 1. локално (винаги работи)
-  transactions.push({
+  const t = {
     id: Date.now(),
     name,
-    amount
-  });
+    amount,
+    source
+  };
 
-  // 👉 2. Supabase (ако работи)
+  transactions.push(t);
+
   if(supabaseClient && user){
     try{
       await supabaseClient.from("transactions").insert({
         user_id: user.id,
         name,
         amount,
+        source,
         created_at: new Date()
       });
     }catch(e){
-      console.log("DB fail, но app работи");
+      console.log("DB fail");
     }
   }
 
@@ -131,7 +147,8 @@ function render(){
     const div = document.createElement("div");
     div.className="card";
     div.innerHTML = `
-      ${t.name}: ${t.amount.toFixed(2)} €
+      <b>${t.name}</b> (${t.source})<br>
+      ${t.amount.toFixed(2)} €
       <button onclick="del(${t.id})">❌</button>
     `;
     list.appendChild(div);
