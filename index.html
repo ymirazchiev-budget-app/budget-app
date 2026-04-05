@@ -4,7 +4,7 @@
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-<title>Budget Cloud - Login</title>
+<title>Budget Cloud v2.1 🔑</title>
 <style>
 body { font-family:Arial; background:#0f172a; color:white; text-align:center; padding:20px; }
 input, button { padding:10px; margin:5px; border-radius:5px; border:none; }
@@ -14,7 +14,7 @@ input, button { padding:10px; margin:5px; border-radius:5px; border:none; }
 </head>
 <body>
 
-<h2>💰 Budget Cloud</h2>
+<h2>💰 Budget Cloud v2.1 🔑</h2>
 
 <div id="loginDiv">
   <input id="email" placeholder="email">
@@ -45,11 +45,11 @@ document.getElementById("loginBtn").addEventListener("click", async () => {
     return;
   }
 
-  // Първо опит за login
+  // Опит за login
   const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
 
   if(error && error.message.includes("User not found")){
-    // Ако няма акаунт, създаваме нов
+    // Създаване на акаунт
     const res = await supabase.auth.signUp({ email, password: pass });
     if(res.error){
       document.getElementById("loginMsg").innerText = "Грешка при регистрация: " + res.error.message;
