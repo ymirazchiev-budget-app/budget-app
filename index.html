@@ -1,12 +1,24 @@
 <!DOCTYPE html>
 <html>
 <head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
+<style>
+body { font-family:Arial; background:#0f172a; color:white; text-align:center; }
+input, button { padding:10px; margin:5px; font-size:16px; }
+button { cursor:pointer; }
+</style>
 </head>
 <body>
-<input id="email" placeholder="email">
-<input id="pass" type="password" placeholder="password">
-<button onclick="login()">Login / SignUp</button>
+
+<h2>💰 Budget Cloud</h2>
+
+<input id="email" type="email" placeholder="Email">
+<input id="pass" type="password" placeholder="Password">
+<button id="loginBtn">Login / SignUp</button>
+
+<div id="status"></div>
 
 <script>
 const supabase = supabase.createClient(
@@ -14,32 +26,41 @@ const supabase = supabase.createClient(
   "sb_publishable_r7Bgf2u5ZK30-DQVHPSHHQ_xgnsXY2x"
 );
 
-async function login(){
-  const email = document.getElementById("email").value;
-  const pass = document.getElementById("pass").value;
-  if(!email || !pass){ alert("Въведи email и парола!"); return; }
+// Правим бутонът да не презарежда страница и да тригерира login
+document.getElementById("loginBtn").addEventListener("click", async function(e){
+  e.preventDefault(); // спира default submit
 
-  // 1️⃣ Опитваме Login
-  let { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({ email, password: pass });
-
-  if(loginError){
-    // 2️⃣ Ако акаунтът не съществува → SignUp
-    let { data: signUpData, error: signUpError } = await supabase.auth.signUp({ email, password: pass });
-    if(signUpError){
-      alert("Грешка: " + signUpError.message);
-      return;
-    }
-    alert("Акаунт създаден! Натисни Login пак.");
-    return;
+  const email = document.getElementById("email").value.trim();
+  const pass = document.getElementById("pass").value.trim();
+  if(!email || !pass){ 
+    document.getElementById("status").innerText = "Въведи email и парола!"; 
+    return; 
   }
 
-  // 3️⃣ Успешен login → вземаме user
-  const user = loginData.user;
-  alert("Влезе успешно: " + user.email);
+  // Опитваме login
+  let { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({ email, password: pass });
+  if(loginError){
+    if(loginError.message.includes("Invalid login credentials") || loginError.message.includes("User not found")){
+      // ако акаунт няма → signUp
+      let { data: signUpData, error: signUpError } = await supabase.auth.signUp({ email, password: pass });
+      if(signUpError){
+        document.getElementById("status").innerText = "Грешка при signup: " + signUpError.message;
+        return;
+      }
+      document.getElementById("status").innerText = "Акаунт създаден! Натисни Login пак.";
+      return;
+    } else {
+      document.getElementById("status").innerText = "Login грешка: " + loginError.message;
+      return;
+    }
+  }
 
-  // 4️⃣ Записваме session в localStorage (автоматично от Supabase)
-  console.log("Session:", loginData.session);
-}
+  const user = loginData.user;
+  document.getElementById("status").innerText = "✅ Влезе успешно: " + user.email;
+
+  console.log("User session:", loginData.session);
+});
 </script>
+
 </body>
 </html>
