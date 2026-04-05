@@ -3,27 +3,28 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Budget Login</title>
+<title>Budget Login Auto</title>
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <style>
 body { font-family:Arial; background:#0f172a; color:white; text-align:center; }
-input, button { padding:10px; margin:5px; border-radius:5px; border:none; }
+input, button { padding:10px; margin:5px; border-radius:5px; border:none; font-size:16px; }
 button { cursor:pointer; background:#2563eb; color:white; }
+#msg { margin-top:10px; color:#facc15; }
 </style>
 </head>
 <body>
 
 <div id="login">
-<h2>🔐 Вход</h2>
-<input id="email" placeholder="Имейл">
-<input id="pass" type="password" placeholder="Парола">
-<button onclick="login()">Login / SignUp</button>
+<h2>🔐 Login / SignUp</h2>
+<input id="email" placeholder="Имейл" type="email">
+<input id="pass" placeholder="Парола" type="password">
+<button id="loginBtn">Login / SignUp</button>
 <div id="msg"></div>
 </div>
 
 <div id="app" style="display:none;">
-<h2>💰 Добре дошъл!</h2>
-<p>Вече сте логнат.</p>
+<h2>💰 Добре дошли!</h2>
+<p>Успешно сте влезли.</p>
 </div>
 
 <script>
@@ -32,43 +33,60 @@ const supabase = supabase.createClient(
   "sb_publishable_r7Bgf2u5ZK30-DQVHPSHHQ_xgnsXY2x"
 );
 
+let user;
+
+// 🔹 Проверка за активна сесия при зареждане
 window.onload = async () => {
   const { data } = await supabase.auth.getSession();
   if(data.session){
-    showApp(data.session.user);
+    user = data.session.user;
+    showApp(user);
+  } else {
+    // Ако няма сесия, показваме login форма
+    document.getElementById("login").style.display="block";
   }
 };
 
-async function login(){
-  const email = document.getElementById("email").value;
-  const pass = document.getElementById("pass").value;
-  const msg = document.getElementById("msg");
-  msg.innerText="";
-
-  if(!email || !pass){ msg.innerText="Попълни имейл и парола!"; return; }
-
-  // Опитваме login
-  let { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
-
-  if(error){
-    // Ако потребителят не съществува, правим signup
-    if(error.message.includes("User not found") || error.message.includes("Invalid login")){
-      let res = await supabase.auth.signUp({ email, password: pass });
-      if(res.error){ msg.innerText="Грешка при регистрация: "+res.error.message; return; }
-      msg.innerText="Акаунтът е създаден! Натиснете Login пак.";
-      return;
-    }
-    msg.innerText="Login грешка: "+error.message;
-    return;
-  }
-
-  showApp(data.user);
-}
-
+// 🔹 Функция за показване на app
 function showApp(user){
   document.getElementById("login").style.display="none";
   document.getElementById("app").style.display="block";
 }
+
+// 🔹 Login / SignUp
+document.getElementById("loginBtn").addEventListener("click", async () => {
+  const email = document.getElementById("email").value.trim();
+  const pass = document.getElementById("pass").value.trim();
+  const msg = document.getElementById("msg");
+  msg.innerText = "";
+
+  if(!email || !pass){
+    msg.innerText = "Попълнете имейл и парола!";
+    return;
+  }
+
+  // Опит за login
+  let { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
+
+  if(error){
+    // Ако потребителят не съществува → signup
+    if(error.message.includes("User not found") || error.message.includes("Invalid login")){
+      const { data: signupData, error: signupError } = await supabase.auth.signUp({ email, password: pass });
+      if(signupError){
+        msg.innerText = "Грешка при регистрация: " + signupError.message;
+        return;
+      }
+      msg.innerText = "Акаунтът е създаден! Натиснете Login пак.";
+      return;
+    }
+    msg.innerText = "Login грешка: " + error.message;
+    return;
+  }
+
+  user = data.user;
+  showApp(user);
+});
 </script>
+
 </body>
 </html>
