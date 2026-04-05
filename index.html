@@ -3,51 +3,37 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Budget MAX++ AutoCategory + Daily Breakdown</title>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<title>Budget MAX++ FIX LOGIN</title>
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <style>
-body { margin:0; font-family:Arial; background:#0f172a; color:white; text-align:center; }
-button, select, input { padding:8px; margin:5px; border:none; border-radius:8px; }
+body { font-family:Arial; background:#0f172a; color:white; text-align:center; }
+input, button, select { padding:8px; margin:5px; border-radius:5px; border:none; }
 .card { background:#1e293b; margin:10px; padding:10px; border-radius:10px; text-align:left; }
-#chartsContainer { width:90%; margin:auto; }
-#dailyTable { width:90%; margin:auto; border-collapse: collapse; }
-#dailyTable td, #dailyTable th { border:1px solid #555; padding:5px; text-align:center; }
 </style>
 </head>
 <body>
 
-<div id="login">
+<div id="loginDiv">
 <h2>🔐 Budget Cloud Login</h2>
 <input id="email" placeholder="email">
 <input id="pass" type="password" placeholder="password">
-<button onclick="login()">Login</button>
+<button onclick="login()">Login / SignUp</button>
 </div>
 
-<div id="app" style="display:none;">
-<div class="card">
+<div id="appDiv" style="display:none;">
 <h2>💰 Budget MAX++</h2>
-<select id="profile" onchange="switchProfile()"></select>
+<select id="profileSelect" onchange="switchProfile()"></select>
 <button onclick="addProfile()">+ Профил</button>
-<select id="month" onchange="load()"></select>
+<select id="monthSelect" onchange="loadTransactions()"></select>
 <div>Баланс: <span id="balance">0 €</span> | Бонус: <span id="bonusBalance">0 €</span></div>
+
+<button onclick="addTransaction('income')">+ Доход</button>
+<button onclick="addTransaction('expense')">- Разход</button>
+<button onclick="addTransaction('bonus')">🎁 Бонус</button>
+
+<div id="transactionList"></div>
+<div id="analysisDiv" class="card"></div>
 </div>
-
-<button onclick="add('income')">+ Доход</button>
-<button onclick="add('expense')">- Разход</button>
-<button onclick="add('bonus')">🎁 Бонус</button>
-
-<div id="list"></div>
-<div id="analysis" class="card"></div>
-<div id="chartsContainer">
-<canvas id="chart"></canvas>
-</div>
-
-<h3>📅 Месечна разбивка по дни</h3>
-<table id="dailyTable">
-<thead><tr><th>Ден</th><th>Доход</th><th>Разход</th><th>Бонус</th></tr></thead>
-<tbody></tbody>
-</table>
 
 <script>
 const supabase = supabase.createClient(
@@ -55,161 +41,132 @@ const supabase = supabase.createClient(
   "sb_publishable_r7Bgf2u5ZK30-DQVHPSHHQ_xgnsXY2x"
 );
 
-let user, profiles = {}, currentProfile, chart;
+let user=null, profiles={}, currentProfile=null;
 
-// ===== Авто Login =====
-window.onload = async () => {
-  try {
-    const { data } = await supabase.auth.getSession();
-    if(data.session){
-      user = data.session.user;
-      document.getElementById("login").style.display="none";
-      document.getElementById("app").style.display="block";
-      await loadProfiles();
-      populateMonthSelect();
-      load();
-    } else {
-      document.getElementById("login").style.display="block";
-    }
-  } catch(e){ console.log("AutoLogin failed", e); }
-};
-
-// ===== Login =====
-async function login(){
-  const email=document.getElementById("email").value;
-  const pass=document.getElementById("pass").value;
-  try {
-    const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
-    if(error){ alert("Login грешка: " + error.message); return; }
-    user = data.user;
-    document.getElementById("login").style.display="none";
-    document.getElementById("app").style.display="block";
+// ===== Автоматичен Login =====
+window.onload = async ()=>{
+  const { data } = await supabase.auth.getSession();
+  if(data.session){
+    user = data.session.user;
+    document.getElementById("loginDiv").style.display="none";
+    document.getElementById("appDiv").style.display="block";
     await loadProfiles();
     populateMonthSelect();
-    load();
-  } catch(e){ alert("Login error: " + e.message); }
+    loadTransactions();
+  }
+};
+
+// ===== Login / SignUp =====
+async function login(){
+  const email = document.getElementById("email").value;
+  const pass = document.getElementById("pass").value;
+  if(!email || !pass){ alert("Въведи email и парола!"); return; }
+  
+  let { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
+  if(error){
+    // Ако акаунтът не съществува → SignUp
+    let { data: suData, error: suError } = await supabase.auth.signUp({ email, password: pass });
+    if(suError){ alert("Грешка: "+suError.message); return; }
+    alert("Акаунт създаден! Натисни Login пак.");
+    return;
+  }
+  
+  user = data.user;
+  document.getElementById("loginDiv").style.display="none";
+  document.getElementById("appDiv").style.display="block";
+  await loadProfiles();
+  populateMonthSelect();
+  loadTransactions();
 }
 
 // ===== Profiles =====
 async function loadProfiles(){
   const { data } = await supabase.from("transactions").select("profile").eq("user_id", user.id);
-  profiles = {};
-  data.forEach(t=>{ profiles[t.profile] = 1; });
+  profiles={};
+  data.forEach(t=>{ profiles[t.profile]=1; });
   if(Object.keys(profiles).length===0) profiles["Лични"]=1;
   currentProfile = Object.keys(profiles)[0];
   renderProfiles();
 }
 function renderProfiles(){
-  let sel = document.getElementById("profile"); sel.innerHTML="";
+  let sel = document.getElementById("profileSelect"); sel.innerHTML="";
   Object.keys(profiles).forEach(p=>{
     let o=document.createElement("option"); o.value=p; o.innerText=p; sel.appendChild(o);
   });
   sel.value=currentProfile;
 }
-function switchProfile(){ currentProfile=document.getElementById("profile").value; load(); }
+function switchProfile(){ currentProfile=document.getElementById("profileSelect").value; loadTransactions(); }
 function addProfile(){
-  let name=prompt("Име на профил:");
+  let name = prompt("Име на профил:");
   if(!name) return;
-  profiles[name]=1;
-  currentProfile=name;
-  renderProfiles();
-  load();
+  profiles[name]=1; currentProfile=name;
+  renderProfiles(); loadTransactions();
 }
 
-// ===== Month select =====
+// ===== Месец =====
 function populateMonthSelect(){
-  let sel=document.getElementById("month"); sel.innerHTML="";
-  let now=new Date();
+  let sel=document.getElementById("monthSelect"); sel.innerHTML="";
+  let now = new Date();
   for(let i=0;i<12;i++){
     let d=new Date(now.getFullYear(),i,1);
-    let o=document.createElement("option");
-    o.value=d.toISOString().slice(0,7);
-    o.innerText=d.toLocaleString('bg',{month:'long', year:'numeric'});
+    let o=document.createElement("option"); o.value=d.toISOString().slice(0,7);
+    o.innerText=d.toLocaleString('bg',{month:'long',year:'numeric'});
     sel.appendChild(o);
   }
   sel.value=now.toISOString().slice(0,7);
 }
 
-// ===== Guess Category =====
+// ===== Авто категоризация =====
 function guessCategory(name){
-  name = name.toLowerCase();
-  if(name.match(/храна|магазин|пържола|супермаркет/)) return "Храна";
+  name=name.toLowerCase();
+  if(name.match(/храна|магазин|супермаркет|пържола/)) return "Храна";
   if(name.match(/ток|електричество|светлина/)) return "Ток";
   if(name.match(/вода|канализация/)) return "Вода";
-  if(name.match(/интернет|телефон/)) return "Свързаност";
-  return name; // ако не е разпознато, оставя каквото си е
+  return name;
 }
 
-// ===== Load transactions =====
-async function load(){
-  let month=document.getElementById("month").value;
-  const start = month+"-01";
-  const end = month+"-32";
-  let { data } = await supabase.from("transactions")
+// ===== Load Transactions =====
+async function loadTransactions(){
+  let month=document.getElementById("monthSelect").value;
+  const start=month+"-01";
+  const end=month+"-32";
+  const { data } = await supabase.from("transactions")
     .select("*")
     .eq("user_id", user.id)
     .eq("profile", currentProfile)
     .gte("created_at", start)
     .lt("created_at", end);
-  render(data||[]);
-  renderDaily(data||[]);
+  renderTransactions(data||[]);
 }
 
-// ===== Render transactions, analysis, chart =====
-function render(data){
+// ===== Render Transactions & Analysis =====
+function renderTransactions(data){
   let bal=0, inc=0, exp=0, bonus=0;
   let cats={};
-  let list=document.getElementById("list"); list.innerHTML="";
-  data.forEach((d,i)=>{
+  let list=document.getElementById("transactionList"); list.innerHTML="";
+  data.forEach(d=>{
     let amount=parseFloat(d.amount);
     if(d.name==="bonus"){ bonus+=amount; }
     else{ bal+=amount; if(amount>0) inc+=amount; else { exp+=Math.abs(amount); cats[d.name]=(cats[d.name]||0)+Math.abs(amount); } }
     let div=document.createElement("div"); div.className="card";
-    div.innerHTML=`${d.name}: ${amount.toFixed(2)} € <button onclick="del('${d.id}')">❌</button>`;
+    div.innerHTML=`${d.name}: ${amount.toFixed(2)} € <button onclick="deleteTransaction('${d.id}')">❌</button>`;
     list.appendChild(div);
   });
   document.getElementById("balance").innerText=bal.toFixed(2)+" €";
   document.getElementById("bonusBalance").innerText=bonus.toFixed(2)+" €";
 
-  // Analysis
-  let analysisDiv=document.getElementById("analysis");
-  analysisDiv.innerHTML="<h3>📊 Разходи по категории:</h3>";
+  let analysisDiv=document.getElementById("analysisDiv"); analysisDiv.innerHTML="<h3>📊 Разходи по категории:</h3>";
   let topCat="", max=0;
   for(let c in cats){
     let val=cats[c];
     let p=document.createElement("div"); p.innerText=c+": "+val.toFixed(2)+" €"; analysisDiv.appendChild(p);
-    if(val>max){ max=val; topCat=c; }
+    if(val>max){ max=val; topCat=c; max=val; }
   }
-  if(topCat){ let top=document.createElement("div"); top.innerHTML="<br><b>Най-много харчиш за: "+topCat+" ("+max.toFixed(2)+" €)</b>"; analysisDiv.appendChild(top); }
-
-  // Chart
-  let ctx=document.getElementById("chart"); if(chart) chart.destroy();
-  chart=new Chart(ctx,{ type:'line', data:{ labels:['Доход','Разход','Бонус'], datasets:[{ label:'Сума', data:[inc,exp,bonus], borderColor:'#22c55e', backgroundColor:'#22c5550', fill:false }]}, options:{ responsive:true }});
+  if(topCat){ let top=document.createElement("div"); top.innerHTML="<b>Най-много харчиш за: "+topCat+" ("+max.toFixed(2)+" €)</b>"; analysisDiv.appendChild(top);}
 }
 
-// ===== Daily Breakdown =====
-function renderDaily(data){
-  let month=document.getElementById("month").value;
-  const daysInMonth=new Date(month.split("-")[0], month.split("-")[1], 0).getDate();
-  const daily=[];
-  for(let i=1;i<=daysInMonth;i++){ daily[i]= {inc:0, exp:0, bonus:0}; }
-  data.forEach(d=>{
-    const day = new Date(d.created_at).getDate();
-    const amount=parseFloat(d.amount);
-    if(d.name==="bonus") daily[day].bonus+=amount;
-    else if(amount>0) daily[day].inc+=amount;
-    else daily[day].exp+=Math.abs(amount);
-  });
-  const tbody=document.querySelector("#dailyTable tbody"); tbody.innerHTML="";
-  for(let i=1;i<=daysInMonth;i++){
-    let tr=document.createElement("tr");
-    tr.innerHTML=`<td>${i}</td><td>${daily[i].inc.toFixed(2)}</td><td>${daily[i].exp.toFixed(2)}</td><td>${daily[i].bonus.toFixed(2)}</td>`;
-    tbody.appendChild(tr);
-  }
-}
-
-// ===== Add transaction =====
-async function add(type){
+// ===== Add Transaction =====
+async function addTransaction(type){
   let name=prompt("Име/категория:");
   if(!name) return;
   name = guessCategory(name);
@@ -217,13 +174,13 @@ async function add(type){
   if(isNaN(val)) return;
   if(type==="expense") val=-val;
   await supabase.from("transactions").insert([{ user_id:user.id, profile:currentProfile, name:name, amount:val, created_at:new Date().toISOString() }]);
-  load();
+  loadTransactions();
 }
 
-// ===== Delete transaction =====
-async function del(id){
+// ===== Delete Transaction =====
+async function deleteTransaction(id){
   await supabase.from("transactions").delete().eq("id", id);
-  load();
+  loadTransactions();
 }
 </script>
 </body>
