@@ -7,12 +7,13 @@
 body { font-family:Arial; background:#0f172a; color:white; text-align:center; }
 button, input { padding:10px; margin:5px; border-radius:5px; }
 #app { display:none; }
+#list div { margin:2px 0; }
 </style>
-<title>BudgetCloud_MAX_v1</title>
+<title>BudgetCloud_MAX_v2</title>
 </head>
 
 <body>
-<h2>💰 BudgetCloud_MAX_v1</h2>
+<h2>💰 BudgetCloud_MAX_v2</h2>
 
 <div id="loginDiv">
   <input id="email" placeholder="Email">
@@ -25,12 +26,13 @@ button, input { padding:10px; margin:5px; border-radius:5px; }
   <h1 id="balance">0 €</h1>
   <button onclick="add('income')">+ Доход</button>
   <button onclick="add('expense')">- Разход</button>
+  <button onclick="add('bonus')">💎 Бонус</button>
   <div id="list"></div>
   <div id="analysis"></div>
 </div>
 
 <script>
-// Инициализация Supabase
+// Supabase client
 const client = supabase.createClient(
   "https://ipihscvyyxetkiajjllg.supabase.co",
   "sb_publishable_r7Bgf2u5ZK30-DQVHPSHHQ_xgnsXY2x"
@@ -38,7 +40,7 @@ const client = supabase.createClient(
 
 let user;
 
-// Проверка за вече запазена сесия
+// Проверка за сесия
 window.onload = async () => {
   const { data } = await client.auth.getSession();
   if (data.session) {
@@ -48,7 +50,7 @@ window.onload = async () => {
   }
 };
 
-// Пълен login, сработва на click
+// Login
 document.getElementById("loginBtn").addEventListener("click", async () => {
   const email = document.getElementById("email").value;
   const pass = document.getElementById("pass").value;
@@ -68,17 +70,107 @@ document.getElementById("loginBtn").addEventListener("click", async () => {
   load();
 });
 
-// Покажи app, скри login
+// Покажи app
 function showApp() {
   document.getElementById("loginDiv").style.display = "none";
   document.getElementById("app").style.display = "block";
 }
 
-// Функции add/load/render - само placeholder за сега
-async function add(type){ /* ще надградим после */ }
-async function load(){ /* ще надградим после */ }
-function render(data){ /* ще надградим после */ }
-</script>
+// Добавяне на транзакция
+async function add(type){
+  let name = prompt("Категория (пример: Храна, Ток)","");
+  let val = parseFloat(prompt("Сума (пример: 10.50)","0"));
+  if (isNaN(val)) return;
 
+  if(type === "expense") val = -val;
+
+  // автоматично разпознаване
+  if(!name){
+    if(type==="expense") name="Разход";
+    else if(type==="income") name="Доход";
+    else if(type==="bonus") name="Бонус";
+  }
+
+  await client.from("transactions").insert({
+    user_id: user.id,
+    profile: "Лични",
+    name: name,
+    amount: val,
+    created_at: new Date().toISOString()
+  });
+
+  load();
+}
+
+// Зареждане транзакции
+async function load(){
+  const { data } = await client
+    .from("transactions")
+    .select("*")
+    .eq("user_id", user.id)
+    .order("created_at", {ascending: true});
+
+  render(data || []);
+}
+
+// Рендериране на транзакции и анализ
+function render(data){
+  let bal=0, inc=0, exp=0, bonus=0;
+  const list = document.getElementById("list");
+  list.innerHTML="";
+  const categories = {};
+
+  data.forEach(d=>{
+    let amount = Number(d.amount);
+
+    if(d.name.toLowerCase() === "bonus"){
+      bonus += amount;
+    } else {
+      bal += amount;
+      if(amount>0) inc+=amount;
+      else exp+=Math.abs(amount);
+
+      // категории
+      let cat = d.name.toLowerCase();
+      if(amount<0){
+        if(!categories[cat]) categories[cat]=0;
+        categories[cat] += Math.abs(amount);
+      }
+    }
+
+    let div = document.createElement("div");
+    div.innerText = `${d.name}: ${amount.toFixed(2)} €`;
+    list.appendChild(div);
+  });
+
+  document.getElementById("balance").innerText = (bal + bonus).toFixed(2) + " €";
+
+  // Анализ по категории
+  const analysisDiv = document.getElementById("analysis");
+  analysisDiv.innerHTML = `<h3>📊 Разходи по категории:</h3>`;
+  let topCat = "", max=0;
+
+  for(let c in categories){
+    let val = categories[c];
+    let p = document.createElement("div");
+    p.innerText = `${c}: ${val.toFixed(2)} €`;
+    analysisDiv.appendChild(p);
+    if(val>max){ max=val; topCat=c; }
+  }
+
+  if(topCat){
+    const top = document.createElement("div");
+    top.innerHTML = `<br><b>Най-много харчиш за: ${topCat} (${max.toFixed(2)} €)</b>`;
+    analysisDiv.appendChild(top);
+  }
+
+  // Бонус
+  if(bonus>0){
+    const bonusDiv = document.createElement("div");
+    bonusDiv.innerHTML = `<br>💎 Бонус (необлагаем): ${bonus.toFixed(2)} €`;
+    analysisDiv.appendChild(bonusDiv);
+  }
+}
+</script>
 </body>
 </html>
