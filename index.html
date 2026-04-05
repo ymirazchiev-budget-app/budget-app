@@ -3,8 +3,8 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BudgetCloud_FinalStableLogin_v2</title>
-<script src="https://unpkg.com/@supabase/supabase-js@2/dist/supabase.min.js"></script>
+<title>BudgetCloud_FinalStableLogin_v3</title>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <style>
 body { font-family:Arial; background:#0f172a; color:white; text-align:center; }
 button { padding:10px 15px; margin:5px; border:none; border-radius:5px; cursor:pointer; background:#1e40af; color:white; }
@@ -15,12 +15,12 @@ input { padding:10px; margin:5px; border-radius:5px; width:200px; }
 </head>
 <body>
 
-<h2>💰 BudgetCloud_FinalStableLogin_v2</h2>
+<h2>💰 BudgetCloud_FinalStableLogin_v3</h2>
 
 <div id="login">
   <input id="email" placeholder="Email">
   <input id="pass" type="password" placeholder="Парола">
-  <button id="loginBtn">Login / SignUp</button>
+  <button id="loginBtn" type="button">Login / SignUp</button>
 </div>
 
 <div id="app" style="display:none;">
@@ -30,7 +30,7 @@ input { padding:10px; margin:5px; border-radius:5px; width:200px; }
 
 <script>
 // ⚡ Supabase client
-const supabase = Supabase.createClient(
+const supabase = supabase.createClient(
   "https://ipihscvyyxetkiajjllg.supabase.co",
   "sb_publishable_r7Bgf2u5ZK30-DQVHPSHHQ_xgnsXY2x"
 );
@@ -41,7 +41,7 @@ let user;
 async function checkSession() {
   try {
     const { data, error } = await supabase.auth.getSession();
-    if(error) throw error;
+    if(error){ console.log("Session error:", error.message); return; }
 
     if(data.session && data.session.user){
       user = data.session.user;
@@ -50,47 +50,44 @@ async function checkSession() {
       document.getElementById("welcome").innerText = "Влязъл си като: " + user.email;
     }
   } catch(e) {
-    console.log("Сесия няма или грешка:", e.message);
+    console.log("checkSession catch:", e.message);
   }
 }
 
 // Login / SignUp
-async function login(event) {
-  if(event) event.preventDefault(); // ✅ предотвратява submit / refresh
-
-  const email = document.getElementById("email").value;
+async function login() {
+  const email = document.getElementById("email").value.trim();
   const pass = document.getElementById("pass").value;
 
   if(!email || !pass){ alert("Попълни email и парола"); return; }
 
   try {
+    // Опит за login
     const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
-
     if(error){
-      // Опит за регистрация, ако няма акаунт
-      const res = await supabase.auth.signUp({ email, password: pass });
-      if(res.error){ alert("Грешка при създаване: " + res.error.message); return; }
+      // Ако няма акаунт → signup
+      const { data: signData, error: signError } = await supabase.auth.signUp({ email, password: pass });
+      if(signError){ alert("Грешка при създаване: " + signError.message); return; }
       alert("Акаунт създаден! Натисни Login пак.");
       return;
     }
 
+    // Login успешен
     user = data.user;
     document.getElementById("login").style.display = "none";
     document.getElementById("app").style.display = "block";
     document.getElementById("welcome").innerText = "Влязъл си като: " + user.email;
 
   } catch(e){
-    alert("Грешка login: " + e.message);
+    alert("Login catch: " + e.message);
   }
 }
 
-// Клик на бутона
+// Добавяне на click listener
 document.getElementById("loginBtn").addEventListener("click", login);
 
 // Проверка на сесия при зареждане
-window.onload = () => {
-  checkSession();
-};
+window.addEventListener("load", checkSession);
 </script>
 
 </body>
