@@ -3,208 +3,218 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BudgetCloud_REAL_FIXED_v3</title>
+<title>BudgetCloud_REAL_FIXED_v4</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
 body { font-family:Arial; background:#0f172a; color:white; text-align:center; }
-button { padding:10px; margin:5px; border:none; border-radius:5px; cursor:pointer; }
-.card { background:#1e293b; margin:10px; padding:10px; border-radius:10px; }
-.balance { font-size:28px; margin:10px; }
-.analysis { background:#020617; padding:10px; margin:10px; border-radius:10px; }
+
+button {
+  padding:8px;
+  margin:3px;
+  border:none;
+  border-radius:5px;
+  cursor:pointer;
+}
+
+.card {
+  background:#1e293b;
+  margin:5px;
+  padding:6px;
+  border-radius:6px;
+  font-size:14px;
+}
+
+.balance { font-size:26px; margin:10px; }
+
+.analysis {
+  background:#020617;
+  padding:10px;
+  margin:10px;
+  border-radius:10px;
+}
+
+/* печат */
+@media print {
+  body { background:white; color:black; }
+  button { display:none; }
+}
 </style>
 </head>
 
 <body>
 
-<h2>💰 BudgetCloud_REAL_FIXED_v3</h2>
+<h2>💰 BudgetCloud_REAL_FIXED_v4</h2>
 
 <div class="balance" id="balance">0.00 €</div>
+
+<select id="profileFilter" onchange="render()">
+  <option value="all">Всички</option>
+  <option value="лични">Лични</option>
+  <option value="служебен">Служебен</option>
+</select>
+
+<br>
 
 <button onclick="addIncome()">+ Доход</button>
 <button onclick="addExpense()">- Разход</button>
 <button onclick="addBonus()">💎 Бонус</button>
+<button onclick="window.print()">🖨️ Печат</button>
 
 <div id="list"></div>
 
 <div class="analysis">
   <h3>📊 Разходи по категории</h3>
   <div id="analysis"></div>
+  <canvas id="chart"></canvas>
 </div>
 
 <script>
 let transactions = [];
-let supabaseClient = null;
-let user = null;
+let chart;
 
-window.onload = async function(){
-  try{
-    if(window.supabase){
-      supabaseClient = window.supabase.createClient(
-        "https://ipihscvyyxetkiajjllg.supabase.co",
-        "sb_publishable_r7Bgf2u5ZK30-DQVHPSHHQ_xgnsXY2x"
-      );
-
-      const { data } = await supabaseClient.auth.getSession();
-      if(data.session){
-        user = data.session.user;
-      }
-    }
-  }catch(e){}
-
-  render();
-};
-
-// 🔥 автоматични категории
+// категории
 function autoCategory(name){
   let n = name.toLowerCase();
-
   if(n.includes("пица") || n.includes("храна")) return "храна";
   if(n.includes("ток")) return "ток";
-  if(n.includes("вода")) return "вода";
-  if(n.includes("гориво") || n.includes("бензин")) return "гориво";
-
+  if(n.includes("пазар")) return "пазар";
   return name;
 }
 
+// профил
+function askProfile(){
+  let p = prompt("Профил: лични или служебен?");
+  if(!p) return "лични";
+  return p.toLowerCase().includes("служ") ? "служебен" : "лични";
+}
+
 // ➕ ДОХОД
-async function addIncome(){
-  let name = prompt("От къде е дохода?");
+function addIncome(){
+  let name = prompt("Доход от?");
   if(!name) return;
 
-  let source = prompt("Източник?");
-  if(!source) source = "-";
+  let profile = askProfile();
 
-  let val = prompt("Сума:");
-  if(!val) return;
+  let val = parseFloat(prompt("Сума:").replace(",", "."));
+  if(isNaN(val)) return;
 
-  val = parseFloat(val.replace(",", "."));
-
-  addTransaction(name, val, source);
+  addTransaction(name, val, "доход", profile);
 }
 
 // ➖ РАЗХОД
-async function addExpense(){
-  let name = prompt("За какво е?");
+function addExpense(){
+  let name = prompt("Разход за?");
   if(!name) return;
 
   name = autoCategory(name);
 
-  let source = prompt("Платено от?");
-  if(!source) source = "-";
+  let profile = askProfile();
 
-  let val = prompt("Сума:");
-  if(!val) return;
+  let val = -Math.abs(parseFloat(prompt("Сума:").replace(",", ".")));
+  if(isNaN(val)) return;
 
-  val = -Math.abs(parseFloat(val.replace(",", ".")));
-
-  addTransaction(name, val, source);
+  addTransaction(name, val, "разход", profile);
 }
 
 // 💎 БОНУС
-async function addBonus(){
-  let name = prompt("Бонус?");
-  if(!name) name="бонус";
+function addBonus(){
+  let val = parseFloat(prompt("Бонус:").replace(",", "."));
+  if(isNaN(val)) return;
 
-  let source = prompt("От къде?");
-  if(!source) source="-";
+  let profile = askProfile();
 
-  let val = prompt("Сума:");
-  if(!val) return;
-
-  val = parseFloat(val.replace(",", "."));
-
-  addTransaction(name, val, source);
+  addTransaction("бонус", val, "бонус", profile);
 }
 
-// ➕ запис
-async function addTransaction(name, amount, source){
-
-  const t = {
+// запис
+function addTransaction(name, amount, type, profile){
+  transactions.push({
     id: Date.now(),
     name,
     amount,
-    source
-  };
-
-  transactions.push(t);
-
-  if(supabaseClient && user){
-    try{
-      await supabaseClient.from("transactions").insert({
-        user_id: user.id,
-        name,
-        amount,
-        source,
-        created_at: new Date()
-      });
-    }catch(e){}
-  }
+    type,
+    profile
+  });
 
   render();
 }
 
-// ❌ delete
+// delete
 function del(id){
   transactions = transactions.filter(t => t.id !== id);
   render();
 }
 
-// 🎨 render
+// render
 function render(){
-  let bal = 0;
-  let categories = {};
+  let bal=0;
+  let cats={};
+
+  const filter = document.getElementById("profileFilter").value;
 
   const list = document.getElementById("list");
   list.innerHTML="";
 
   transactions.forEach(t=>{
+
+    if(filter !== "all" && t.profile !== filter) return;
+
     bal += t.amount;
 
-    // анализ (само разходи)
     if(t.amount < 0){
-      if(!categories[t.name]) categories[t.name]=0;
-      categories[t.name]+=Math.abs(t.amount);
+      if(!cats[t.name]) cats[t.name]=0;
+      cats[t.name]+=Math.abs(t.amount);
     }
 
     const div = document.createElement("div");
     div.className="card";
     div.innerHTML = `
-      <b>${t.name}</b> (${t.source})<br>
+      ${t.name} | ${t.profile}<br>
       ${t.amount.toFixed(2)} €
       <button onclick="del(${t.id})">❌</button>
     `;
     list.appendChild(div);
   });
 
-  document.getElementById("balance").innerText = bal.toFixed(2) + " €";
+  document.getElementById("balance").innerText = bal.toFixed(2)+" €";
 
-  // 📊 анализ
+  // анализ
   const aDiv = document.getElementById("analysis");
   aDiv.innerHTML="";
 
-  let max = 0;
-  let top = "";
+  let labels=[], values=[];
 
-  for(let c in categories){
-    let val = categories[c];
+  for(let c in cats){
+    labels.push(c);
+    values.push(cats[c]);
 
-    let p = document.createElement("div");
-    p.innerText = c + ": " + val.toFixed(2) + " €";
+    let p=document.createElement("div");
+    p.innerText = c + ": " + cats[c].toFixed(2)+" €";
     aDiv.appendChild(p);
+  }
 
-    if(val > max){
-      max = val;
-      top = c;
+  draw(labels, values);
+}
+
+// графика
+function draw(labels, values){
+  const ctx = document.getElementById("chart");
+
+  if(chart) chart.destroy();
+
+  chart = new Chart(ctx,{
+    type:"bar",
+    data:{
+      labels:labels,
+      datasets:[{
+        data:values,
+        backgroundColor:"#ef4444"
+      }]
     }
-  }
-
-  if(top){
-    let best = document.createElement("div");
-    best.innerHTML = "<br><b>Най-много харчиш за: " + top + " (" + max.toFixed(2) + " €)</b>";
-    aDiv.appendChild(best);
-  }
+  });
 }
 </script>
 
