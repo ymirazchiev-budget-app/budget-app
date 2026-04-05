@@ -3,47 +3,27 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Budget MAX++</title>
-
+<title>Budget Login</title>
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
 <style>
-body { font-family:Arial; background:#0f172a; color:white; text-align:center; margin:0; }
-input, button, select { padding:10px; margin:5px; border-radius:5px; border:none; }
+body { font-family:Arial; background:#0f172a; color:white; text-align:center; }
+input, button { padding:10px; margin:5px; border-radius:5px; border:none; }
 button { cursor:pointer; background:#2563eb; color:white; }
-.card { background:#1e293b; margin:10px; padding:10px; border-radius:10px; }
-.header { padding:10px; }
-.balance { font-size:28px; margin:10px 0; }
-#analysis { margin:10px 0; }
 </style>
 </head>
-
 <body>
+
 <div id="login">
 <h2>🔐 Вход</h2>
-<input id="email" placeholder="email">
-<input id="pass" type="password" placeholder="password">
-<button onclick="login()">Login</button>
+<input id="email" placeholder="Имейл">
+<input id="pass" type="password" placeholder="Парола">
+<button onclick="login()">Login / SignUp</button>
+<div id="msg"></div>
 </div>
 
 <div id="app" style="display:none;">
-<div class="header">
-<h2>💰 Budget MAX++</h2>
-<select id="profile" onchange="switchProfile()"></select> <button onclick="addProfile()">+ Профил</button>
-<div class="balance">Баланс: <span id="balance">0</span> € | Бонус: <span id="bonus">0</span> €</div>
-</div>
-
-<button onclick="add('income')">+ Доход</button> 
-<button onclick="add('expense')">- Разход</button> 
-<button onclick="add('bonus')">🎁 Бонус</button>
-
-<div class="card">
-<canvas id="chart"></canvas>
-</div>
-
-<div id="analysis"></div>
-<div id="list"></div>
+<h2>💰 Добре дошъл!</h2>
+<p>Вече сте логнат.</p>
 </div>
 
 <script>
@@ -52,176 +32,42 @@ const supabase = supabase.createClient(
   "sb_publishable_r7Bgf2u5ZK30-DQVHPSHHQ_xgnsXY2x"
 );
 
-let user;
-let currentProfile;
-let chart;
-
 window.onload = async () => {
   const { data } = await supabase.auth.getSession();
   if(data.session){
-    user = data.session.user;
-    document.getElementById("login").style.display="none";
-    document.getElementById("app").style.display="block";
-    loadProfiles();
-    load();
+    showApp(data.session.user);
   }
 };
 
-// ------------------ LOGIN ------------------
 async function login(){
-  let email=document.getElementById("email").value;
-  let pass=document.getElementById("pass").value;
-  if(!email || !pass){ alert("Попълни имейл и парола!"); return; }
+  const email = document.getElementById("email").value;
+  const pass = document.getElementById("pass").value;
+  const msg = document.getElementById("msg");
+  msg.innerText="";
 
-  let { data, error } = await supabase.auth.signInWithPassword({email,password:pass});
-  if(error){ alert("Login грешка: "+error.message); return; }
+  if(!email || !pass){ msg.innerText="Попълни имейл и парола!"; return; }
 
-  user = data.user;
-  document.getElementById("login").style.display="none";
-  document.getElementById("app").style.display="block";
+  // Опитваме login
+  let { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
 
-  loadProfiles();
-  load();
-}
-
-// ------------------ PROFILES ------------------
-let profiles = JSON.parse(localStorage.getItem("profiles")) || { "Лични": [] };
-currentProfile = localStorage.getItem("currentProfile") || "Лични";
-
-function loadProfiles(){
-  let sel=document.getElementById("profile");
-  sel.innerHTML="";
-  Object.keys(profiles).forEach(p=>{
-    let o=document.createElement("option");
-    o.value=p; o.innerText=p;
-    sel.appendChild(o);
-  });
-  sel.value=currentProfile;
-}
-
-function switchProfile(){
-  currentProfile = document.getElementById("profile").value;
-  saveProfiles();
-  load();
-}
-
-function addProfile(){
-  let name = prompt("Име на профил:");
-  if(!name) return;
-  profiles[name]=[];
-  currentProfile=name;
-  saveProfiles();
-  loadProfiles();
-  load();
-}
-
-function saveProfiles(){
-  localStorage.setItem("profiles", JSON.stringify(profiles));
-  localStorage.setItem("currentProfile", currentProfile);
-}
-
-// ------------------ LOAD ------------------
-async function load(){
-  if(!user) return;
-  let { data } = await supabase
-    .from("transactions")
-    .select("*")
-    .eq("user_id", user.id);
-
-  render(data || []);
-}
-
-// ------------------ RENDER ------------------
-function render(data){
-  let bal=0, bonus=0;
-  let list = document.getElementById("list"); list.innerHTML="";
-  let categories = {};
-  let monthly = {};
-
-  data.forEach((d,i)=>{
-    let amount = parseFloat(d.amount);
-
-    // автоматично разпознаване категории
-    let cat = d.name.toLowerCase();
-    if(cat.includes("храна")||cat.includes("магазин")) cat="Храна";
-    else if(cat.includes("ток")||cat.includes("електричество")) cat="Ток";
-    else if(cat.includes("гориво")||cat.includes("бензин")) cat="Гориво";
-    else if(d.name.toLowerCase()==="bonus") cat="Бонус";
-    else cat = d.name;
-
-    if(cat==="Бонус"){ bonus+=amount; }
-    else { bal+=amount; if(amount<0) categories[cat]=(categories[cat]||0)+Math.abs(amount); }
-
-    // месечен анализ
-    let month = new Date(d.created_at).toISOString().slice(0,7);
-    monthly[month] = (monthly[month] || 0) + amount;
-
-    // списък с триене
-    let div=document.createElement("div"); div.className="card";
-    div.innerHTML=`${d.name}: ${amount.toFixed(2)} € <button onclick="del(${i})">❌</button>`;
-    list.appendChild(div);
-  });
-
-  document.getElementById("balance").innerText = bal.toFixed(2);
-  document.getElementById("bonus").innerText = bonus.toFixed(2);
-
-  // анализ категории
-  let analysisDiv = document.getElementById("analysis"); analysisDiv.innerHTML="<h3>📊 Разходи по категории:</h3>";
-  for(let c in categories){
-    let p = document.createElement("div");
-    p.innerText = c+": "+categories[c].toFixed(2)+" €";
-    analysisDiv.appendChild(p);
+  if(error){
+    // Ако потребителят не съществува, правим signup
+    if(error.message.includes("User not found") || error.message.includes("Invalid login")){
+      let res = await supabase.auth.signUp({ email, password: pass });
+      if(res.error){ msg.innerText="Грешка при регистрация: "+res.error.message; return; }
+      msg.innerText="Акаунтът е създаден! Натиснете Login пак.";
+      return;
+    }
+    msg.innerText="Login грешка: "+error.message;
+    return;
   }
 
-  // графика по месеци (линия)
-  let ctx = document.getElementById("chart");
-  if(chart) chart.destroy();
-  chart = new Chart(ctx,{
-    type:'line',
-    data:{
-      labels: Object.keys(monthly),
-      datasets:[{
-        label:'Баланс',
-        data: Object.values(monthly),
-        borderColor:'#22c55e',
-        backgroundColor:'rgba(34,197,94,0.2)',
-        fill:true
-      }]
-    },
-    options:{ responsive:true, plugins:{legend:{display:true}} }
-  });
+  showApp(data.user);
 }
 
-// ------------------ ADD ------------------
-async function add(type){
-  if(!user){ alert("Влезте първо!"); return; }
-  let name = prompt("Категория:"); if(!name) return;
-  let val = parseFloat(prompt("Сума:"));
-  if(isNaN(val)){ alert("Невалидна сума"); return; }
-  if(type==="expense") val=-val;
-
-  await supabase.from("transactions").insert({
-    user_id:user.id,
-    profile: currentProfile,
-    name: name || type,
-    amount: val,
-    created_at: new Date()
-  });
-
-  load();
-}
-
-// ------------------ DELETE ------------------
-async function del(i){
-  if(!user) return;
-  let { data } = await supabase
-    .from("transactions")
-    .select("*")
-    .eq("user_id", user.id);
-  if(!data[i]) return;
-
-  await supabase.from("transactions").delete().eq("id", data[i].id);
-  load();
+function showApp(user){
+  document.getElementById("login").style.display="none";
+  document.getElementById("app").style.display="block";
 }
 </script>
 </body>
