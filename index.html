@@ -1,39 +1,12 @@
 <!DOCTYPE html>
-<html lang="bg">
+<html>
 <head>
-<meta charset="UTF-8">
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>Budget MAX++ FIX LOGIN</title>
 <script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-<style>
-body { font-family:Arial; background:#0f172a; color:white; text-align:center; }
-input, button, select { padding:8px; margin:5px; border-radius:5px; border:none; }
-.card { background:#1e293b; margin:10px; padding:10px; border-radius:10px; text-align:left; }
-</style>
 </head>
 <body>
-
-<div id="loginDiv">
-<h2>🔐 Budget Cloud Login</h2>
 <input id="email" placeholder="email">
 <input id="pass" type="password" placeholder="password">
 <button onclick="login()">Login / SignUp</button>
-</div>
-
-<div id="appDiv" style="display:none;">
-<h2>💰 Budget MAX++</h2>
-<select id="profileSelect" onchange="switchProfile()"></select>
-<button onclick="addProfile()">+ Профил</button>
-<select id="monthSelect" onchange="loadTransactions()"></select>
-<div>Баланс: <span id="balance">0 €</span> | Бонус: <span id="bonusBalance">0 €</span></div>
-
-<button onclick="addTransaction('income')">+ Доход</button>
-<button onclick="addTransaction('expense')">- Разход</button>
-<button onclick="addTransaction('bonus')">🎁 Бонус</button>
-
-<div id="transactionList"></div>
-<div id="analysisDiv" class="card"></div>
-</div>
 
 <script>
 const supabase = supabase.createClient(
@@ -41,146 +14,31 @@ const supabase = supabase.createClient(
   "sb_publishable_r7Bgf2u5ZK30-DQVHPSHHQ_xgnsXY2x"
 );
 
-let user=null, profiles={}, currentProfile=null;
-
-// ===== Автоматичен Login =====
-window.onload = async ()=>{
-  const { data } = await supabase.auth.getSession();
-  if(data.session){
-    user = data.session.user;
-    document.getElementById("loginDiv").style.display="none";
-    document.getElementById("appDiv").style.display="block";
-    await loadProfiles();
-    populateMonthSelect();
-    loadTransactions();
-  }
-};
-
-// ===== Login / SignUp =====
 async function login(){
   const email = document.getElementById("email").value;
   const pass = document.getElementById("pass").value;
   if(!email || !pass){ alert("Въведи email и парола!"); return; }
-  
-  let { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
-  if(error){
-    // Ако акаунтът не съществува → SignUp
-    let { data: suData, error: suError } = await supabase.auth.signUp({ email, password: pass });
-    if(suError){ alert("Грешка: "+suError.message); return; }
+
+  // 1️⃣ Опитваме Login
+  let { data: loginData, error: loginError } = await supabase.auth.signInWithPassword({ email, password: pass });
+
+  if(loginError){
+    // 2️⃣ Ако акаунтът не съществува → SignUp
+    let { data: signUpData, error: signUpError } = await supabase.auth.signUp({ email, password: pass });
+    if(signUpError){
+      alert("Грешка: " + signUpError.message);
+      return;
+    }
     alert("Акаунт създаден! Натисни Login пак.");
     return;
   }
-  
-  user = data.user;
-  document.getElementById("loginDiv").style.display="none";
-  document.getElementById("appDiv").style.display="block";
-  await loadProfiles();
-  populateMonthSelect();
-  loadTransactions();
-}
 
-// ===== Profiles =====
-async function loadProfiles(){
-  const { data } = await supabase.from("transactions").select("profile").eq("user_id", user.id);
-  profiles={};
-  data.forEach(t=>{ profiles[t.profile]=1; });
-  if(Object.keys(profiles).length===0) profiles["Лични"]=1;
-  currentProfile = Object.keys(profiles)[0];
-  renderProfiles();
-}
-function renderProfiles(){
-  let sel = document.getElementById("profileSelect"); sel.innerHTML="";
-  Object.keys(profiles).forEach(p=>{
-    let o=document.createElement("option"); o.value=p; o.innerText=p; sel.appendChild(o);
-  });
-  sel.value=currentProfile;
-}
-function switchProfile(){ currentProfile=document.getElementById("profileSelect").value; loadTransactions(); }
-function addProfile(){
-  let name = prompt("Име на профил:");
-  if(!name) return;
-  profiles[name]=1; currentProfile=name;
-  renderProfiles(); loadTransactions();
-}
+  // 3️⃣ Успешен login → вземаме user
+  const user = loginData.user;
+  alert("Влезе успешно: " + user.email);
 
-// ===== Месец =====
-function populateMonthSelect(){
-  let sel=document.getElementById("monthSelect"); sel.innerHTML="";
-  let now = new Date();
-  for(let i=0;i<12;i++){
-    let d=new Date(now.getFullYear(),i,1);
-    let o=document.createElement("option"); o.value=d.toISOString().slice(0,7);
-    o.innerText=d.toLocaleString('bg',{month:'long',year:'numeric'});
-    sel.appendChild(o);
-  }
-  sel.value=now.toISOString().slice(0,7);
-}
-
-// ===== Авто категоризация =====
-function guessCategory(name){
-  name=name.toLowerCase();
-  if(name.match(/храна|магазин|супермаркет|пържола/)) return "Храна";
-  if(name.match(/ток|електричество|светлина/)) return "Ток";
-  if(name.match(/вода|канализация/)) return "Вода";
-  return name;
-}
-
-// ===== Load Transactions =====
-async function loadTransactions(){
-  let month=document.getElementById("monthSelect").value;
-  const start=month+"-01";
-  const end=month+"-32";
-  const { data } = await supabase.from("transactions")
-    .select("*")
-    .eq("user_id", user.id)
-    .eq("profile", currentProfile)
-    .gte("created_at", start)
-    .lt("created_at", end);
-  renderTransactions(data||[]);
-}
-
-// ===== Render Transactions & Analysis =====
-function renderTransactions(data){
-  let bal=0, inc=0, exp=0, bonus=0;
-  let cats={};
-  let list=document.getElementById("transactionList"); list.innerHTML="";
-  data.forEach(d=>{
-    let amount=parseFloat(d.amount);
-    if(d.name==="bonus"){ bonus+=amount; }
-    else{ bal+=amount; if(amount>0) inc+=amount; else { exp+=Math.abs(amount); cats[d.name]=(cats[d.name]||0)+Math.abs(amount); } }
-    let div=document.createElement("div"); div.className="card";
-    div.innerHTML=`${d.name}: ${amount.toFixed(2)} € <button onclick="deleteTransaction('${d.id}')">❌</button>`;
-    list.appendChild(div);
-  });
-  document.getElementById("balance").innerText=bal.toFixed(2)+" €";
-  document.getElementById("bonusBalance").innerText=bonus.toFixed(2)+" €";
-
-  let analysisDiv=document.getElementById("analysisDiv"); analysisDiv.innerHTML="<h3>📊 Разходи по категории:</h3>";
-  let topCat="", max=0;
-  for(let c in cats){
-    let val=cats[c];
-    let p=document.createElement("div"); p.innerText=c+": "+val.toFixed(2)+" €"; analysisDiv.appendChild(p);
-    if(val>max){ max=val; topCat=c; max=val; }
-  }
-  if(topCat){ let top=document.createElement("div"); top.innerHTML="<b>Най-много харчиш за: "+topCat+" ("+max.toFixed(2)+" €)</b>"; analysisDiv.appendChild(top);}
-}
-
-// ===== Add Transaction =====
-async function addTransaction(type){
-  let name=prompt("Име/категория:");
-  if(!name) return;
-  name = guessCategory(name);
-  let val=parseFloat(prompt("Сума:"));
-  if(isNaN(val)) return;
-  if(type==="expense") val=-val;
-  await supabase.from("transactions").insert([{ user_id:user.id, profile:currentProfile, name:name, amount:val, created_at:new Date().toISOString() }]);
-  loadTransactions();
-}
-
-// ===== Delete Transaction =====
-async function deleteTransaction(id){
-  await supabase.from("transactions").delete().eq("id", id);
-  loadTransactions();
+  // 4️⃣ Записваме session в localStorage (автоматично от Supabase)
+  console.log("Session:", loginData.session);
 }
 </script>
 </body>
