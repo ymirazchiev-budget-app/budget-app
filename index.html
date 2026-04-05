@@ -3,11 +3,11 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BudgetCloud_FinalStableLogin_v1</title>
+<title>BudgetCloud_FinalStableLogin_v2</title>
 <script src="https://unpkg.com/@supabase/supabase-js@2/dist/supabase.min.js"></script>
 <style>
 body { font-family:Arial; background:#0f172a; color:white; text-align:center; }
-button { padding:10px; margin:5px; border:none; border-radius:5px; cursor:pointer; background:#1e40af; color:white; }
+button { padding:10px 15px; margin:5px; border:none; border-radius:5px; cursor:pointer; background:#1e40af; color:white; }
 button:hover { background:#2563eb; }
 input { padding:10px; margin:5px; border-radius:5px; width:200px; }
 #app, #login { margin-top:20px; }
@@ -15,7 +15,7 @@ input { padding:10px; margin:5px; border-radius:5px; width:200px; }
 </head>
 <body>
 
-<h2>💰 BudgetCloud_FinalStableLogin_v1</h2>
+<h2>💰 BudgetCloud_FinalStableLogin_v2</h2>
 
 <div id="login">
   <input id="email" placeholder="Email">
@@ -25,11 +25,11 @@ input { padding:10px; margin:5px; border-radius:5px; width:200px; }
 
 <div id="app" style="display:none;">
   <h1 id="welcome">Добре дошъл!</h1>
-  <p>Тук ще се появят доходи, разходи и бонуси след надграждане.</p>
+  <p>След успешен login ще можеш да въвеждаш доходи, разходи и бонуси.</p>
 </div>
 
 <script>
-// ⚠️ Поправка: supabase е глобална с главна буква S
+// ⚡ Supabase client
 const supabase = Supabase.createClient(
   "https://ipihscvyyxetkiajjllg.supabase.co",
   "sb_publishable_r7Bgf2u5ZK30-DQVHPSHHQ_xgnsXY2x"
@@ -55,7 +55,9 @@ async function checkSession() {
 }
 
 // Login / SignUp
-async function login() {
+async function login(event) {
+  if(event) event.preventDefault(); // ✅ предотвратява submit / refresh
+
   const email = document.getElementById("email").value;
   const pass = document.getElementById("pass").value;
 
@@ -82,10 +84,10 @@ async function login() {
   }
 }
 
-// Добавяне на click event на бутона
+// Клик на бутона
 document.getElementById("loginBtn").addEventListener("click", login);
 
-// Проверка сесия при зареждане
+// Проверка на сесия при зареждане
 window.onload = () => {
   checkSession();
 };
