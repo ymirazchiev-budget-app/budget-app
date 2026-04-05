@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BudgetCloud_REAL_FIXED_v2</title>
+<title>BudgetCloud_REAL_FIXED_v3</title>
 
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 
@@ -12,12 +12,13 @@ body { font-family:Arial; background:#0f172a; color:white; text-align:center; }
 button { padding:10px; margin:5px; border:none; border-radius:5px; cursor:pointer; }
 .card { background:#1e293b; margin:10px; padding:10px; border-radius:10px; }
 .balance { font-size:28px; margin:10px; }
+.analysis { background:#020617; padding:10px; margin:10px; border-radius:10px; }
 </style>
 </head>
 
 <body>
 
-<h2>💰 BudgetCloud_REAL_FIXED_v2</h2>
+<h2>💰 BudgetCloud_REAL_FIXED_v3</h2>
 
 <div class="balance" id="balance">0.00 €</div>
 
@@ -26,6 +27,11 @@ button { padding:10px; margin:5px; border:none; border-radius:5px; cursor:pointe
 <button onclick="addBonus()">💎 Бонус</button>
 
 <div id="list"></div>
+
+<div class="analysis">
+  <h3>📊 Разходи по категории</h3>
+  <div id="analysis"></div>
+</div>
 
 <script>
 let transactions = [];
@@ -45,19 +51,29 @@ window.onload = async function(){
         user = data.session.user;
       }
     }
-  }catch(e){
-    console.log("Supabase fail");
-  }
+  }catch(e){}
 
   render();
 };
 
+// 🔥 автоматични категории
+function autoCategory(name){
+  let n = name.toLowerCase();
+
+  if(n.includes("пица") || n.includes("храна")) return "храна";
+  if(n.includes("ток")) return "ток";
+  if(n.includes("вода")) return "вода";
+  if(n.includes("гориво") || n.includes("бензин")) return "гориво";
+
+  return name;
+}
+
 // ➕ ДОХОД
 async function addIncome(){
-  let name = prompt("От къде е дохода? (напр. заплата)");
+  let name = prompt("От къде е дохода?");
   if(!name) return;
 
-  let source = prompt("Източник (напр. банка / Revolut)");
+  let source = prompt("Източник?");
   if(!source) source = "-";
 
   let val = prompt("Сума:");
@@ -70,10 +86,12 @@ async function addIncome(){
 
 // ➖ РАЗХОД
 async function addExpense(){
-  let name = prompt("За какво е разхода? (напр. храна, ток)");
+  let name = prompt("За какво е?");
   if(!name) return;
 
-  let source = prompt("Платено от? (карта, кеш)");
+  name = autoCategory(name);
+
+  let source = prompt("Платено от?");
   if(!source) source = "-";
 
   let val = prompt("Сума:");
@@ -86,7 +104,7 @@ async function addExpense(){
 
 // 💎 БОНУС
 async function addBonus(){
-  let name = prompt("Какъв бонус?");
+  let name = prompt("Бонус?");
   if(!name) name="бонус";
 
   let source = prompt("От къде?");
@@ -100,7 +118,7 @@ async function addBonus(){
   addTransaction(name, val, source);
 }
 
-// 🔥 ОБЩА функция
+// ➕ запис
 async function addTransaction(name, amount, source){
 
   const t = {
@@ -121,9 +139,7 @@ async function addTransaction(name, amount, source){
         source,
         created_at: new Date()
       });
-    }catch(e){
-      console.log("DB fail");
-    }
+    }catch(e){}
   }
 
   render();
@@ -138,11 +154,19 @@ function del(id){
 // 🎨 render
 function render(){
   let bal = 0;
+  let categories = {};
+
   const list = document.getElementById("list");
   list.innerHTML="";
 
   transactions.forEach(t=>{
     bal += t.amount;
+
+    // анализ (само разходи)
+    if(t.amount < 0){
+      if(!categories[t.name]) categories[t.name]=0;
+      categories[t.name]+=Math.abs(t.amount);
+    }
 
     const div = document.createElement("div");
     div.className="card";
@@ -155,6 +179,32 @@ function render(){
   });
 
   document.getElementById("balance").innerText = bal.toFixed(2) + " €";
+
+  // 📊 анализ
+  const aDiv = document.getElementById("analysis");
+  aDiv.innerHTML="";
+
+  let max = 0;
+  let top = "";
+
+  for(let c in categories){
+    let val = categories[c];
+
+    let p = document.createElement("div");
+    p.innerText = c + ": " + val.toFixed(2) + " €";
+    aDiv.appendChild(p);
+
+    if(val > max){
+      max = val;
+      top = c;
+    }
+  }
+
+  if(top){
+    let best = document.createElement("div");
+    best.innerHTML = "<br><b>Най-много харчиш за: " + top + " (" + max.toFixed(2) + " €)</b>";
+    aDiv.appendChild(best);
+  }
 }
 </script>
 
