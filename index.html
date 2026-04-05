@@ -3,18 +3,19 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BudgetCloud_FinalStableLogin</title>
+<title>BudgetCloud_FinalStableLogin_v1</title>
 <script src="https://unpkg.com/@supabase/supabase-js@2/dist/supabase.min.js"></script>
 <style>
 body { font-family:Arial; background:#0f172a; color:white; text-align:center; }
-button { padding:10px; margin:5px; border:none; border-radius:5px; cursor:pointer; }
-input { padding:10px; margin:5px; border-radius:5px; }
+button { padding:10px; margin:5px; border:none; border-radius:5px; cursor:pointer; background:#1e40af; color:white; }
+button:hover { background:#2563eb; }
+input { padding:10px; margin:5px; border-radius:5px; width:200px; }
 #app, #login { margin-top:20px; }
 </style>
 </head>
 <body>
 
-<h2>💰 BudgetCloud_FinalStableLogin</h2>
+<h2>💰 BudgetCloud_FinalStableLogin_v1</h2>
 
 <div id="login">
   <input id="email" placeholder="Email">
@@ -24,10 +25,11 @@ input { padding:10px; margin:5px; border-radius:5px; }
 
 <div id="app" style="display:none;">
   <h1 id="welcome">Добре дошъл!</h1>
+  <p>Тук ще се появят доходи, разходи и бонуси след надграждане.</p>
 </div>
 
 <script>
-// ⚠️ Корекция: supabase е глобална, първа буква S
+// ⚠️ Поправка: supabase е глобална с главна буква S
 const supabase = Supabase.createClient(
   "https://ipihscvyyxetkiajjllg.supabase.co",
   "sb_publishable_r7Bgf2u5ZK30-DQVHPSHHQ_xgnsXY2x"
@@ -35,7 +37,7 @@ const supabase = Supabase.createClient(
 
 let user;
 
-// Проверка за сесия
+// Проверка на сесия при зареждане
 async function checkSession() {
   try {
     const { data, error } = await supabase.auth.getSession();
@@ -61,23 +63,29 @@ async function login() {
 
   try {
     const { data, error } = await supabase.auth.signInWithPassword({ email, password: pass });
+
     if(error){
+      // Опит за регистрация, ако няма акаунт
       const res = await supabase.auth.signUp({ email, password: pass });
       if(res.error){ alert("Грешка при създаване: " + res.error.message); return; }
       alert("Акаунт създаден! Натисни Login пак.");
       return;
     }
+
     user = data.user;
     document.getElementById("login").style.display = "none";
     document.getElementById("app").style.display = "block";
     document.getElementById("welcome").innerText = "Влязъл си като: " + user.email;
+
   } catch(e){
     alert("Грешка login: " + e.message);
   }
 }
 
+// Добавяне на click event на бутона
 document.getElementById("loginBtn").addEventListener("click", login);
 
+// Проверка сесия при зареждане
 window.onload = () => {
   checkSession();
 };
