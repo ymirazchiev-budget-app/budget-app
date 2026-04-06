@@ -1,20 +1,70 @@
-// BudgetCloud_NEXT_LEVEL_v1
-// Без login, автоматично запазване и синхронизация Supabase
-import { createClient } from '@supabase/supabase-js';
-import Chart from 'chart.js/auto';
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BudgetCloud_NEXT_LEVEL_v1</title>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+  body { font-family: Arial, sans-serif; margin: 10px; background: #f4f6f8; }
+  h2 { margin-top: 10px; }
+  #controls { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
+  button { padding: 5px 10px; cursor: pointer; }
+  .columns { display: flex; gap: 10px; margin-bottom: 10px; }
+  .column { flex: 1; background: white; padding: 10px; border-radius: 6px; box-shadow: 0 0 4px rgba(0,0,0,0.1); }
+  .row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #eee; }
+  canvas { height: 150px !important; width: 100% !important; }
+  select, input { padding: 4px; margin-right: 5px; }
+</style>
+</head>
+<body>
 
-// --- Supabase config ---
+<h2>BudgetCloud_NEXT_LEVEL_v1</h2>
+
+<div id="controls">
+  <select id="profile-select">
+    <option value="Личен">👤 Личен</option>
+    <option value="Служебен">🏢 Служебен</option>
+  </select>
+  <select id="month-select"></select>
+  <input type="text" id="category-input" placeholder="Категория">
+  <input type="text" id="method-input" placeholder="Банка/Кеш/Карта">
+  <input type="text" id="object-input" placeholder="Обект/Клиент">
+  <input type="number" id="amount-input" placeholder="Сума">
+  <select id="type-select">
+    <option value="Доход">Доход</option>
+    <option value="Бонус">Бонус</option>
+    <option value="Разход">Разход</option>
+  </select>
+  <button onclick="addTransactionUI()">Добави</button>
+</div>
+
+<div class="columns">
+  <div class="column" id="income-column">
+    <h3>Доход + Бонус</h3>
+  </div>
+  <div class="column" id="expense-column">
+    <h3>Разход</h3>
+  </div>
+</div>
+
+<div class="columns">
+  <canvas id="income-chart"></canvas>
+  <canvas id="expense-chart"></canvas>
+</div>
+
+<script type="module">
+import { createClient } from 'https://cdn.jsdelivr.net/npm/@supabase/supabase-js/+esm';
+
 const SUPABASE_URL = 'https://ipihscvyyxetkiajjllg.supabase.co';
 const SUPABASE_KEY = 'sb_publishable_r7Bgf2u5ZK30-DQVHPSHHQ_xgnsXY2x';
 const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// --- Глобални променливи ---
 let transactions = [];
-let categoriesMemory = {}; // автоматично запомняне на категории/клиенти/методи
-let currentProfile = 'Личен'; // default
-let currentMonth = new Date().getMonth() + 1; // текущ месец
+let categoriesMemory = {};
+let currentProfile = 'Личен';
+let currentMonth = new Date().getMonth() + 1;
 
-// --- UI ---
 const incomeColumn = document.getElementById('income-column');
 const expenseColumn = document.getElementById('expense-column');
 const incomeChartCanvas = document.getElementById('income-chart');
@@ -22,32 +72,33 @@ const expenseChartCanvas = document.getElementById('expense-chart');
 const profileSelect = document.getElementById('profile-select');
 const monthSelect = document.getElementById('month-select');
 
-// --- Функции за добавяне на транзакции ---
+for (let m=1; m<=12; m++) {
+  const opt = document.createElement('option');
+  opt.value = m;
+  opt.text = m;
+  monthSelect.appendChild(opt);
+}
+monthSelect.value = currentMonth;
+
+profileSelect.onchange = () => { currentProfile = profileSelect.value; loadTransactions(); };
+monthSelect.onchange = () => { currentMonth = parseInt(monthSelect.value); loadTransactions(); };
+
 async function addTransaction(type, category, method, amount, object) {
   if (!amount || isNaN(amount)) return alert('Моля въведете сума');
-  
   const { data, error } = await supabase
     .from('transactions')
-    .insert([{
-      type, category, method, amount, object,
-      profile: currentProfile,
-      created_at: new Date()
-    }]);
-
+    .insert([{ type, category, method, amount, object, profile: currentProfile, created_at: new Date() }]);
   if (error) return console.error(error);
-  
   transactions.push(data[0]);
-  updateUI();
   memorizeCategory(type, category, method);
+  updateUI();
 }
 
-// --- Функция за запомняне на категории ---
 function memorizeCategory(type, category, method) {
   const key = `${type}_${category}_${method}`;
   categoriesMemory[key] = (categoriesMemory[key] || 0) + 1;
 }
 
-// --- Функция за изтриване ---
 async function deleteTransaction(id) {
   const { error } = await supabase.from('transactions').delete().eq('id', id);
   if (error) return console.error(error);
@@ -55,69 +106,63 @@ async function deleteTransaction(id) {
   updateUI();
 }
 
-// --- Функция за визуализация ---
 function updateUI() {
-  incomeColumn.innerHTML = '';
-  expenseColumn.innerHTML = '';
+  incomeColumn.innerHTML = '<h3>Доход + Бонус</h3>';
+  expenseColumn.innerHTML = '<h3>Разход</h3>';
 
   const incomeData = {};
   const expenseData = {};
-  
+
   transactions.forEach(t => {
-    if (t.type === 'Доход' || t.type === 'Бонус') {
-      const key = `${t.category} (${t.method})`;
-      incomeData[key] = (incomeData[key] || 0) + parseFloat(t.amount);
-    } else {
-      const key = `${t.category} (${t.method})`;
-      expenseData[key] = (expenseData[key] || 0) + parseFloat(t.amount);
-    }
+    const key = `${t.category} (${t.method})`;
+    if (t.type==='Доход' || t.type==='Бонус') incomeData[key]=(incomeData[key]||0)+parseFloat(t.amount);
+    else expenseData[key]=(expenseData[key]||0)+parseFloat(t.amount);
   });
 
-  // render редове
-  Object.entries(incomeData).forEach(([k, v]) => {
-    const row = document.createElement('div');
-    row.className = 'row';
-    row.innerHTML = `${k}: ${v.toFixed(2)} € <button onclick="deleteTransaction('${k}')">X</button>`;
+  Object.entries(incomeData).forEach(([k,v])=>{
+    const row=document.createElement('div');
+    row.className='row';
+    row.innerHTML=`${k}: ${v.toFixed(2)} € <button onclick="deleteTransaction(${transactions.find(t=>t.category+' ('+t.method+')'===k).id})">X</button>`;
     incomeColumn.appendChild(row);
   });
-  
-  Object.entries(expenseData).forEach(([k, v]) => {
-    const row = document.createElement('div');
-    row.className = 'row';
-    row.innerHTML = `${k}: ${v.toFixed(2)} € <button onclick="deleteTransaction('${k}')">X</button>`;
+
+  Object.entries(expenseData).forEach(([k,v])=>{
+    const row=document.createElement('div');
+    row.className='row';
+    row.innerHTML=`${k}: ${v.toFixed(2)} € <button onclick="deleteTransaction(${transactions.find(t=>t.category+' ('+t.method+')'===k).id})">X</button>`;
     expenseColumn.appendChild(row);
   });
 
   renderCharts(incomeData, expenseData);
 }
 
-// --- Функция за графики ---
 function renderCharts(incomeData, expenseData) {
-  new Chart(incomeChartCanvas, {
-    type: 'bar',
-    data: { labels: Object.keys(incomeData), datasets: [{ label: 'Доход + Бонус', data: Object.values(incomeData), backgroundColor: '#4CAF50' }] },
-    options: { responsive: true, maintainAspectRatio: false }
-  });
-
-  new Chart(expenseChartCanvas, {
-    type: 'bar',
-    data: { labels: Object.keys(expenseData), datasets: [{ label: 'Разходи', data: Object.values(expenseData), backgroundColor: '#F44336' }] },
-    options: { responsive: true, maintainAspectRatio: false }
-  });
+  new Chart(incomeChartCanvas, { type:'bar', data:{ labels:Object.keys(incomeData), datasets:[{ label:'Доход + Бонус', data:Object.values(incomeData), backgroundColor:'#4CAF50' }] }, options:{ responsive:true, maintainAspectRatio:false }});
+  new Chart(expenseChartCanvas, { type:'bar', data:{ labels:Object.keys(expenseData), datasets:[{ label:'Разходи', data:Object.values(expenseData), backgroundColor:'#F44336' }] }, options:{ responsive:true, maintainAspectRatio:false }});
 }
 
-// --- Зареждане на транзакции от Supabase ---
 async function loadTransactions() {
   const { data, error } = await supabase
     .from('transactions')
     .select('*')
     .eq('profile', currentProfile)
     .gte('extract(month from created_at)', currentMonth);
-
   if (error) return console.error(error);
   transactions = data;
   updateUI();
 }
 
-// --- Initial ---
+function addTransactionUI() {
+  const type=document.getElementById('type-select').value;
+  const category=document.getElementById('category-input').value || 'Без категория';
+  const method=document.getElementById('method-input').value || 'Кеш';
+  const amount=parseFloat(document.getElementById('amount-input').value);
+  const object=document.getElementById('object-input').value || '';
+  addTransaction(type,category,method,amount,object);
+}
+
 loadTransactions();
+</script>
+
+</body>
+</html>
