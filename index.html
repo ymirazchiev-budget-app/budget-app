@@ -3,27 +3,23 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BudgetCloud_ANALYTICS_v8</title>
+<title>BudgetCloud_ANALYTICS_v9</title>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
-body { font-family:Arial; background:#0f172a; color:white; text-align:center; }
+body { font-family:Arial; background:#0f172a; color:white; text-align:center; margin:0; padding:0; }
 
-button { padding:6px; margin:3px; border:none; border-radius:5px; cursor:pointer; }
+button { padding:4px 6px; margin:2px; border:none; border-radius:4px; cursor:pointer; font-size:12px; }
 
-.container {
-  display:flex;
-  justify-content:center;
-  gap:10px;
-}
+.container { display:flex; justify-content:center; gap:10px; flex-wrap:wrap; }
 
-.col { width:45%; }
+.col { width:45%; min-width:250px; }
 
 .card {
   background:#1e293b;
   margin:2px;
-  padding:4px;
+  padding:4px 6px;
   border-radius:5px;
   font-size:12px;
   display:flex;
@@ -31,16 +27,19 @@ button { padding:6px; margin:3px; border:none; border-radius:5px; cursor:pointer
   align-items:center;
 }
 
+.card button { padding:2px 4px; font-size:10px; }
+
 .balance { font-size:22px; margin:10px; }
 
-.analysis { background:#020617; padding:10px; margin:10px; border-radius:10px; }
+.analysis { background:#020617; padding:10px; margin:5px 0; border-radius:10px; }
 
+canvas { margin-top:10px; }
 </style>
 </head>
 
 <body>
 
-<h3>💰 BudgetCloud_ANALYTICS_v8</h3>
+<h3>💰 BudgetCloud_ANALYTICS_v9</h3>
 
 <div class="balance" id="balance">0.00 €</div>
 
@@ -61,45 +60,34 @@ button { padding:6px; margin:3px; border:none; border-radius:5px; cursor:pointer
   </div>
 </div>
 
-<div class="analysis">
-  <h4>📊 Доходи и Бонуси</h4>
-  <div id="analysisIncome"></div>
-  <canvas id="chartIncome"></canvas>
-</div>
-
-<div class="analysis">
-  <h4>📊 Разходи</h4>
-  <div id="analysisExpense"></div>
-  <canvas id="chartExpense"></canvas>
+<!-- Графики под колоните, една до друга -->
+<div class="container">
+  <div class="col analysis">
+    <h4>📊 Доходи и Бонуси</h4>
+    <canvas id="chartIncome"></canvas>
+  </div>
+  <div class="col analysis">
+    <h4>📊 Разходи</h4>
+    <canvas id="chartExpense"></canvas>
+  </div>
 </div>
 
 <script>
-
 let data = JSON.parse(localStorage.getItem("data") || "[]");
 let chartIncome, chartExpense;
 
 // FLOW
 function flow(type){
-
   let options = [];
 
-  if(type==="expense"){
-    options = ["храна","пазар","ток","вода"];
-  }
-
-  if(type==="income"){
-    options = ["заплата","помощи"];
-  }
-
-  if(type==="bonus"){
-    options = ["заплата","подарък","клиент"];
-  }
+  if(type==="expense") options = ["храна","пазар","ток","вода"];
+  if(type==="income") options = ["заплата","помощи"];
+  if(type==="bonus") options = ["бонус","подарък","клиент"];
 
   let name = prompt("Избери или напиши:\n" + options.join(", "));
   if(!name) return;
 
-  let method = prompt("Къде (банка/карта/кеш)?");
-  if(!method) method="-";
+  let method = prompt("Къде (банка/карта/кеш)?") || "-";
 
   let val = parseFloat(prompt("Колко?").replace(",", "."));
   if(isNaN(val)) return;
@@ -115,103 +103,4 @@ function flow(type){
   });
 
   localStorage.setItem("data", JSON.stringify(data));
-  render();
-}
-
-// DELETE
-function del(id){
-  data = data.filter(t => t.id !== id);
-  localStorage.setItem("data", JSON.stringify(data));
-  render();
-}
-
-// RENDER
-function render(){
-
-  let incomeDiv = document.getElementById("incomeList");
-  let expenseDiv = document.getElementById("expenseList");
-
-  incomeDiv.innerHTML="";
-  expenseDiv.innerHTML="";
-
-  let bal=0;
-
-  let incCats={}, expCats={};
-
-  data.forEach(t=>{
-    let a = Number(t.amount);
-    bal += a;
-
-    const div=document.createElement("div");
-    div.className="card";
-    div.innerHTML=`
-      <span>${t.name} (${t.method})</span>
-      <span>
-        ${a.toFixed(2)} €
-        <button onclick="del(${t.id})">❌</button>
-      </span>
-    `;
-
-    if(a>=0){
-      incomeDiv.appendChild(div);
-      if(!incCats[t.name]) incCats[t.name]=0;
-      incCats[t.name]+=a;
-    } else {
-      expenseDiv.appendChild(div);
-      if(!expCats[t.name]) expCats[t.name]=0;
-      expCats[t.name]+=Math.abs(a);
-    }
-  });
-
-  document.getElementById("balance").innerText = bal.toFixed(2)+" €";
-
-  renderAnalysis("analysisIncome", incCats);
-  renderAnalysis("analysisExpense", expCats);
-
-  drawChart("chartIncome", incCats, "green", chartIncome, c=>chartIncome=c);
-  drawChart("chartExpense", expCats, "red", chartExpense, c=>chartExpense=c);
-}
-
-// ANALYSIS
-function renderAnalysis(id, cats){
-  let div=document.getElementById(id);
-  div.innerHTML="";
-
-  for(let c in cats){
-    let p=document.createElement("div");
-    p.innerText = c + ": " + cats[c].toFixed(2)+" €";
-    div.appendChild(p);
-  }
-}
-
-// CHART
-function drawChart(canvasId, cats, color, chartVar, setChart){
-
-  const ctx=document.getElementById(canvasId);
-
-  if(chartVar) chartVar.destroy();
-
-  let labels=Object.keys(cats);
-  let values=Object.values(cats);
-
-  let newChart=new Chart(ctx,{
-    type:"bar",
-    data:{
-      labels,
-      datasets:[{
-        data:values,
-        backgroundColor:color
-      }]
-    }
-  });
-
-  setChart(newChart);
-}
-
-// START
-render();
-
-</script>
-
-</body>
-</html>
+  render
