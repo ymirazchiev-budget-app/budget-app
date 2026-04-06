@@ -1,191 +1,112 @@
-<!DOCTYPE html>
-<html>
-<head>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-<style>
-body { font-family: Arial; background:#0f172a; color:white; text-align:center; margin:0; }
-input, select, button { padding:4px 6px; margin:2px; border-radius:4px; }
-button { cursor:pointer; min-width:60px; display:inline-block; }
-#app { display:none; margin-top:10px; }
-.row { display:flex; justify-content:center; gap:10px; flex-wrap:wrap; }
-.column { display:flex; flex-direction:column; gap:2px; width:180px; }
-.transaction { font-size:0.85em; padding:1px 0; border-bottom:1px solid #333; text-align:left; display:flex; justify-content:space-between; }
-h1,h2,h3 { margin:2px 0; }
-canvas { background:#1e293b; border-radius:6px; margin:5px 0; max-width:100%; height:150px !important; }
-.analysis { font-size:0.75em; text-align:left; margin-top:2px; white-space: pre-line; }
-button.deleteBtn { background:#ef4444; color:white; padding:1px 4px; margin-left:2px; font-size:0.7em; border:none; border-radius:4px; cursor:pointer; }
-.buttonsRow { display:flex; justify-content:center; gap:4px; flex-wrap:wrap; margin-bottom:5px; }
-.flexRow { display:flex; justify-content:center; gap:10px; flex-wrap:wrap; }
-</style>
-</head>
-<body>
+// BudgetCloud_MinStable_v5
+import { createClient } from '@supabase/supabase-js'
+import Chart from 'chart.js/auto'
 
-<h2>💰 BudgetCloud_MinStable_v4</h2>
+const supabaseUrl = 'https://YOUR_SUPABASE_URL.supabase.co'
+const supabaseKey = 'YOUR_SUPABASE_ANON_KEY'
+const supabase = createClient(supabaseUrl, supabaseKey)
 
-<div id="loginDiv">
-<input id="email" placeholder="Email" value="u2m@mail.bg">
-<input id="pass" type="password" placeholder="Password" value="Test9888">
-<button onclick="login()">Login / SignUp</button>
-</div>
+let transactions = []
 
-<div id="app">
-<h1 id="balance">0 €</h1>
+// Elements
+const incomeColumn = document.getElementById('income-column')
+const expenseColumn = document.getElementById('expense-column')
+const incomeChartCanvas = document.getElementById('incomeChart')
+const expenseChartCanvas = document.getElementById('expenseChart')
+const monthSelect = document.getElementById('month-select')
 
-<div class="buttonsRow">
-  <button onclick="addTransaction('income')">Доход</button>
-  <button onclick="addTransaction('bonus')">Бонус</button>
-  <button onclick="addTransaction('expense')">Разход</button>
-</div>
+// Load transactions
+async function loadTransactions(month = null) {
+  let query = supabase.from('transactions').select('*')
+  if (month) query = query.eq('month', month)
 
-<div class="flexRow">
-  <div class="column">
-    <h3>Доход + Бонус</h3>
-    <div id="incomeList"></div>
-    <div id="incomeAnalysis" class="analysis"></div>
-  </div>
-  <div class="column">
-    <h3>Разход</h3>
-    <div id="expenseList"></div>
-    <div id="expenseAnalysis" class="analysis"></div>
-  </div>
-</div>
-
-<div class="flexRow">
-  <canvas id="incomeChart"></canvas>
-  <canvas id="expenseChart"></canvas>
-</div>
-
-<div style="margin-top:5px;">
-<label>Месец:</label>
-<select id="monthSelect" onchange="load()"></select>
-</div>
-
-<script>
-const client = supabase.createClient(
-  "https://ipihscvyyxetkiajjllg.supabase.co",
-  "sb_publishable_r7Bgf2u5ZK30-DQVHPSHHQ_xgnsXY2x"
-);
-
-let user, transactions=[], incomeChart=null, expenseChart=null;
-const months = [...Array(12).keys()].map(i=>i+1);
-const monthSelect = document.getElementById('monthSelect');
-months.forEach(m=>{
-  let opt=document.createElement('option');
-  opt.value=m; opt.innerText=m;
-  monthSelect.appendChild(opt);
-});
-monthSelect.value = new Date().getMonth()+1;
-
-async function login(){
-  let email=document.getElementById("email").value;
-  let pass=document.getElementById("pass").value;
-  let { data, error } = await client.auth.signInWithPassword({ email, password:pass });
-  if(error){ 
-    let { data: signData, error: signErr } = await client.auth.signUp({ email, password:pass });
-    if(signErr){ alert(signErr.message); return; }
-    user = signData.user; alert("Акаунт създаден! Натисни Login пак."); return;
-  }
-  user = data.user;
-  document.getElementById("loginDiv").style.display="none";
-  document.getElementById("app").style.display="block";
-  load();
+  const { data, error } = await query.order('created_at', { ascending: false })
+  if (error) return console.error(error)
+  transactions = data
+  renderTransactions()
+  renderCharts()
+  renderAnalysis()
 }
 
-async function addTransaction(type){
-  let name="", amount=0, method="";
-  if(type==="bonus"){ 
-    name="Бонус"; 
-    method=prompt("От кого/къде (банка/кеш/карта)?"); 
-    amount=parseFloat(prompt("Сума:")); 
-  }
-  else if(type==="income"){ 
-    name=prompt("Доход (заплата/помощи)"); 
-    method=prompt("Къде (банка/кеш/карта)?"); 
-    amount=parseFloat(prompt("Сума:")); 
-  }
-  else { 
-    name=prompt("За какво?"); 
-    method=prompt("Къде (банка/кеш/карта)?"); 
-    amount=-Math.abs(parseFloat(prompt("Сума:"))); 
-  }
-  if(isNaN(amount)) return;
-  await client.from("transactions").insert({ user_id:user.id, type, name, method, amount, created_at:new Date().toISOString() });
-  load();
+// Render transactions
+function renderTransactions() {
+  incomeColumn.innerHTML = ''
+  expenseColumn.innerHTML = ''
+
+  transactions.forEach(t => {
+    const row = document.createElement('div')
+    row.className = 'transaction-row'
+    row.innerHTML = `
+      <span>${t.category}: ${t.amount.toFixed(2)} € (${t.method})</span>
+      <button onclick="deleteTransaction('${t.id}')">X</button>
+    `
+    if (t.amount >= 0 || t.type === 'bonus') incomeColumn.appendChild(row)
+    else expenseColumn.appendChild(row)
+  })
 }
 
-async function deleteTransaction(id){
-  await client.from("transactions").delete().eq('id', id);
-  load();
+// Render analysis
+function renderAnalysis() {
+  const incomeSum = transactions.filter(t => t.amount > 0 || t.type === 'bonus').reduce((a,b)=>a+b.amount,0)
+  const expenseSum = transactions.filter(t => t.amount < 0).reduce((a,b)=>a+Math.abs(b.amount),0)
+
+  document.getElementById('income-analysis').innerText = `Доход + Бонус: ${incomeSum.toFixed(2)} €`
+  document.getElementById('expense-analysis').innerText = `Разход: ${expenseSum.toFixed(2)} €`
 }
 
-async function load(){
-  const month = monthSelect.value;
-  let { data } = await client.from("transactions")
-    .select("*")
-    .eq("user_id", user.id)
-    .gte("created_at", new Date(new Date().getFullYear(), month-1, 1).toISOString())
-    .lt("created_at", new Date(new Date().getFullYear(), month, 1).toISOString());
-  transactions = data || [];
-  render();
-}
+// Render charts
+function renderCharts() {
+  const incomeData = transactions.filter(t => t.amount > 0 || t.type==='bonus').map(t=>t.amount)
+  const expenseData = transactions.filter(t => t.amount < 0).map(t=>Math.abs(t.amount))
 
-function render(){
-  let bal=0, incomeMap={}, expenseMap={}, bonusMap={};
-  const incomeDiv = document.getElementById("incomeList");
-  const expenseDiv = document.getElementById("expenseList");
-  incomeDiv.innerHTML=""; expenseDiv.innerHTML="";
-  transactions.forEach(t=>{
-    let key = t.name + " | " + (t.method||"");
-    if(t.type==="bonus"){ bonusMap[key]=(bonusMap[key]||0)+t.amount; bal+=t.amount; }
-    else if(t.type==="income"){ incomeMap[key]=(incomeMap[key]||0)+t.amount; bal+=t.amount; }
-    else{ expenseMap[key]=(expenseMap[key]||0)+t.amount; bal+=t.amount; }
+  if (window.incomeChartInstance) window.incomeChartInstance.destroy()
+  if (window.expenseChartInstance) window.expenseChartInstance.destroy()
 
-    const row=document.createElement("div"); row.className="transaction";
-    row.innerHTML=`${key}: ${t.amount.toFixed(2)} € <button class="deleteBtn" onclick="deleteTransaction('${t.id}')">X</button>`;
-    if(t.type==="income"||t.type==="bonus") incomeDiv.appendChild(row);
-    else expenseDiv.appendChild(row);
-  });
-  document.getElementById("balance").innerText = bal.toFixed(2)+" €";
-
-  renderAnalysis("incomeAnalysis", incomeMap, bonusMap);
-  renderAnalysis("expenseAnalysis", expenseMap, {});
-
-  renderChart("incomeChart", incomeMap, bonusMap, true);
-  renderChart("expenseChart", expenseMap, {}, false);
-}
-
-function renderAnalysis(id, map1, map2={}){
-  const div=document.getElementById(id);
-  div.innerHTML="";
-  for(let k in map1){ div.innerHTML+= k + ": " + map1[k].toFixed(2)+" €\n"; }
-  for(let k in map2){ div.innerHTML+= k + ": " + map2[k].toFixed(2)+" €\n"; }
-}
-
-function renderChart(id, map1, map2={}, isIncome=true){
-  const labels = [...Object.keys(map1), ...Object.keys(map2)];
-  const data = [...Object.values(map1), ...Object.values(map2)];
-  const ctx=document.getElementById(id).getContext('2d');
-  if(id==="incomeChart" && incomeChart){ incomeChart.destroy(); }
-  if(id==="expenseChart" && expenseChart){ expenseChart.destroy(); }
-  const chart = new Chart(ctx, {
+  window.incomeChartInstance = new Chart(incomeChartCanvas, {
     type: 'bar',
-    data: { labels, datasets:[{ label:isIncome?"Доход/Бонус":"Разход", data, backgroundColor:isIncome?"#22c55e":"#ef4444" }] },
-    options:{ responsive:true, plugins:{ legend:{ display:false } }, maintainAspectRatio:false }
-  });
-  if(isIncome) incomeChart=chart; else expenseChart=chart;
+    data: { labels: transactions.map(t=>t.category), datasets:[{label:'Доход', data:incomeData, backgroundColor:'green'}] },
+    options: { responsive:true, plugins:{legend:{display:false}}, maintainAspectRatio:false }
+  })
+
+  window.expenseChartInstance = new Chart(expenseChartCanvas, {
+    type: 'bar',
+    data: { labels: transactions.map(t=>t.category), datasets:[{label:'Разход', data:expenseData, backgroundColor:'red'}] },
+    options: { responsive:true, plugins:{legend:{display:false}}, maintainAspectRatio:false }
+  })
 }
 
-window.onload = async ()=>{
-  const { data } = await client.auth.getSession();
-  if(data.session){ 
-    user=data.session.user; 
-    document.getElementById("loginDiv").style.display="none"; 
-    document.getElementById("app").style.display="block"; 
-    load(); 
-  }
-};
-</script>
-</body>
-</html>
+// Add transaction
+async function addTransaction(type) {
+  const category = prompt(type==='bonus'?'От кого/клиент':'Категория (пример: храна, ток)')
+  const method = prompt('Метод (банка, карта, кеш)')
+  const amount = parseFloat(prompt('Сума'))
+
+  if (!category || !method || isNaN(amount)) return alert('Въведете валидни данни!')
+
+  const { data, error } = await supabase.from('transactions').insert([{
+    category,
+    method,
+    amount: type==='expense'? -Math.abs(amount) : amount,
+    type,
+    month: new Date().getMonth()+1
+  }])
+
+  if (error) return console.error(error)
+  loadTransactions(monthSelect.value)
+}
+
+// Delete transaction
+async function deleteTransaction(id) {
+  const { error } = await supabase.from('transactions').delete().eq('id', id)
+  if (error) return console.error(error)
+  loadTransactions(monthSelect.value)
+}
+
+// Event listeners
+document.getElementById('income-btn').onclick = () => addTransaction('income')
+document.getElementById('expense-btn').onclick = () => addTransaction('expense')
+document.getElementById('bonus-btn').onclick = () => addTransaction('bonus')
+monthSelect.onchange = () => loadTransactions(monthSelect.value)
+
+// Initial load
+loadTransactions()
