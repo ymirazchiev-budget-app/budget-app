@@ -6,20 +6,20 @@
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
 body { font-family: Arial; background:#0f172a; color:white; text-align:center; margin:0; }
-input, select, button { padding:6px 8px; margin:4px; border-radius:4px; }
-button { cursor:pointer; min-width:80px; }
+input, select, button { padding:6px 8px; margin:2px; border-radius:4px; }
+button { cursor:pointer; min-width:70px; display:inline-block; }
 #app { display:none; margin-top:10px; }
-.row { display:flex; justify-content:center; gap:20px; flex-wrap:wrap; }
+.row { display:flex; justify-content:center; gap:10px; flex-wrap:wrap; }
 .column { display:flex; flex-direction:column; gap:4px; width:180px; }
-.transaction { font-size:0.9em; padding:2px 0; border-bottom:1px solid #333; }
-h1,h2,h3 { margin:6px 0; }
-canvas { background:#1e293b; border-radius:8px; margin:5px; }
-.analysis { font-size:0.85em; text-align:left; margin-top:5px; }
+.transaction { font-size:0.85em; padding:2px 0; border-bottom:1px solid #333; text-align:left; }
+h1,h2,h3 { margin:4px 0; }
+canvas { background:#1e293b; border-radius:8px; margin:5px 0; }
+.analysis { font-size:0.8em; text-align:left; margin-top:5px; }
 </style>
 </head>
 <body>
 
-<h2>💰 BudgetCloud_MinStable_v2</h2>
+<h2>💰 BudgetCloud_MinStable_v3</h2>
 
 <div id="loginDiv">
 <input id="email" placeholder="Email" value="u2m@mail.bg">
@@ -32,14 +32,14 @@ canvas { background:#1e293b; border-radius:8px; margin:5px; }
 
 <div class="row">
   <div class="column">
-    <button onclick="addTransaction('income')">+ Доход</button>
-    <button onclick="addTransaction('bonus')">💎 Бонус</button>
+    <div>
+      <button onclick="addTransaction('income')">Доход</button>
+      <button onclick="addTransaction('bonus')">Бонус</button>
+      <button onclick="addTransaction('expense')">Разход</button>
+    </div>
     <div id="incomeList"></div>
     <canvas id="incomeChart" width="200" height="200"></canvas>
     <div id="incomeAnalysis" class="analysis"></div>
-  </div>
-  <div class="column">
-    <button onclick="addTransaction('expense')">- Разход</button>
     <div id="expenseList"></div>
     <canvas id="expenseChart" width="200" height="200"></canvas>
     <div id="expenseAnalysis" class="analysis"></div>
@@ -51,8 +51,6 @@ canvas { background:#1e293b; border-radius:8px; margin:5px; }
 <select id="monthSelect" onchange="load()"></select>
 </div>
 
-</div>
-
 <script>
 const client = supabase.createClient(
   "https://ipihscvyyxetkiajjllg.supabase.co",
@@ -60,7 +58,6 @@ const client = supabase.createClient(
 );
 
 let user, transactions=[], incomeChart=null, expenseChart=null;
-
 const months = [...Array(12).keys()].map(i=>i+1);
 const monthSelect = document.getElementById('monthSelect');
 months.forEach(m=>{
@@ -73,7 +70,6 @@ monthSelect.value = new Date().getMonth()+1;
 async function login(){
   let email=document.getElementById("email").value;
   let pass=document.getElementById("pass").value;
-
   let { data, error } = await client.auth.signInWithPassword({ email, password:pass });
   if(error){ 
     let { data: signData, error: signErr } = await client.auth.signUp({ email, password:pass });
