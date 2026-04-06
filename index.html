@@ -1,117 +1,123 @@
-<!-- само показвам ключовите промени – не пипам основата -->
+// BudgetCloud_NEXT_LEVEL_v1
+// Без login, автоматично запазване и синхронизация Supabase
+import { createClient } from '@supabase/supabase-js';
+import Chart from 'chart.js/auto';
 
-<script>
+// --- Supabase config ---
+const SUPABASE_URL = 'https://ipihscvyyxetkiajjllg.supabase.co';
+const SUPABASE_KEY = 'sb_publishable_r7Bgf2u5ZK30-DQVHPSHHQ_xgnsXY2x';
+const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
-// 🔹 ПРОФИЛ
-let currentProfile = "личен";
+// --- Глобални променливи ---
+let transactions = [];
+let categoriesMemory = {}; // автоматично запомняне на категории/клиенти/методи
+let currentProfile = 'Личен'; // default
+let currentMonth = new Date().getMonth() + 1; // текущ месец
 
-function switchProfile(p){
-  currentProfile = p;
-  load();
-}
+// --- UI ---
+const incomeColumn = document.getElementById('income-column');
+const expenseColumn = document.getElementById('expense-column');
+const incomeChartCanvas = document.getElementById('income-chart');
+const expenseChartCanvas = document.getElementById('expense-chart');
+const profileSelect = document.getElementById('profile-select');
+const monthSelect = document.getElementById('month-select');
 
-// 🔹 ДОБАВЯНЕ (FIX БОНУС)
-async function add(type){
-
-  let category = prompt("Какво? (пример: храна, ток, заплата, хра, зап)");
+// --- Функции за добавяне на транзакции ---
+async function addTransaction(type, category, method, amount, object) {
+  if (!amount || isNaN(amount)) return alert('Моля въведете сума');
   
-  let client = "";
-  if(type==="bonus"){
-    client = prompt("От кой? (клиент/обект)");
-  }
+  const { data, error } = await supabase
+    .from('transactions')
+    .insert([{
+      type, category, method, amount, object,
+      profile: currentProfile,
+      created_at: new Date()
+    }]);
 
-  let method = prompt("Къде? (карта / кеш / банка)");
-  let amount = parseFloat(prompt("Сума"));
-
-  if(!category || isNaN(amount)) return;
-
-  category = normalize(category);
-
-  if(type==="expense") amount = -Math.abs(amount);
-
-  await db.from("transactions").insert([{
-    type,
-    category,
-    method,
-    amount,
-    client,
-    profile: currentProfile
-  }]);
-
-  load();
+  if (error) return console.error(error);
+  
+  transactions.push(data[0]);
+  updateUI();
+  memorizeCategory(type, category, method);
 }
 
-// 🔹 FILTER ПО ПРОФИЛ
-async function load(){
-  const { data } = await db.from("transactions").select("*");
-
-  let m = month.value;
-
-  let filtered = (data || []).filter(t => t.profile === currentProfile);
-
-  if(m !== "all"){
-    filtered = filtered.filter(t => new Date(t.created_at).getMonth()+1 == m);
-  }
-
-  render(filtered);
+// --- Функция за запомняне на категории ---
+function memorizeCategory(type, category, method) {
+  const key = `${type}_${category}_${method}`;
+  categoriesMemory[key] = (categoriesMemory[key] || 0) + 1;
 }
 
-// 🔹 АНАЛИЗ ПО МЕТОД
-function methodAnalysis(data){
+// --- Функция за изтриване ---
+async function deleteTransaction(id) {
+  const { error } = await supabase.from('transactions').delete().eq('id', id);
+  if (error) return console.error(error);
+  transactions = transactions.filter(t => t.id !== id);
+  updateUI();
+}
 
-  let map = {};
+// --- Функция за визуализация ---
+function updateUI() {
+  incomeColumn.innerHTML = '';
+  expenseColumn.innerHTML = '';
 
-  data.forEach(t=>{
-    let key = t.method || "друго";
-    map[key] = (map[key]||0) + t.amount;
+  const incomeData = {};
+  const expenseData = {};
+  
+  transactions.forEach(t => {
+    if (t.type === 'Доход' || t.type === 'Бонус') {
+      const key = `${t.category} (${t.method})`;
+      incomeData[key] = (incomeData[key] || 0) + parseFloat(t.amount);
+    } else {
+      const key = `${t.category} (${t.method})`;
+      expenseData[key] = (expenseData[key] || 0) + parseFloat(t.amount);
+    }
   });
 
-  return Object.entries(map)
-    .map(([k,v])=>`${k}: ${Math.abs(v).toFixed(2)} €`)
-    .join("<br>");
+  // render редове
+  Object.entries(incomeData).forEach(([k, v]) => {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `${k}: ${v.toFixed(2)} € <button onclick="deleteTransaction('${k}')">X</button>`;
+    incomeColumn.appendChild(row);
+  });
+  
+  Object.entries(expenseData).forEach(([k, v]) => {
+    const row = document.createElement('div');
+    row.className = 'row';
+    row.innerHTML = `${k}: ${v.toFixed(2)} € <button onclick="deleteTransaction('${k}')">X</button>`;
+    expenseColumn.appendChild(row);
+  });
+
+  renderCharts(incomeData, expenseData);
 }
 
-function render(data){
+// --- Функция за графики ---
+function renderCharts(incomeData, expenseData) {
+  new Chart(incomeChartCanvas, {
+    type: 'bar',
+    data: { labels: Object.keys(incomeData), datasets: [{ label: 'Доход + Бонус', data: Object.values(incomeData), backgroundColor: '#4CAF50' }] },
+    options: { responsive: true, maintainAspectRatio: false }
+  });
 
-  let incArr = data.filter(t=>t.type==="income"||t.type==="bonus");
-  let expArr = data.filter(t=>t.type==="expense");
-
-  let incG = group(incArr);
-  let expG = group(expArr);
-
-  // 👇 БОНУС С ОБЕКТ
-  inc.innerHTML = incArr.map(t=>
-    `<div class="small">
-    ${formatDate(t.created_at)} | 
-    ${t.category} ${t.client ? "["+t.client+"]" : ""} 
-    (${t.method}) ${t.amount.toFixed(2)}€
-    <button onclick="del('${t.id}')">X</button>
-    </div>`
-  ).join("");
-
-  exp.innerHTML = expArr.map(t=>
-    `<div class="small">
-    ${formatDate(t.created_at)} | 
-    ${t.category} (${t.method}) ${t.amount.toFixed(2)}€
-    <button onclick="del('${t.id}')">X</button>
-    </div>`
-  ).join("");
-
-  // 🔹 АНАЛИЗ ПО МЕТОД
-  incA.innerHTML =
-    "Доход: "+Object.values(incG).reduce((a,b)=>a+b,0).toFixed(2)+" €<br>" +
-    "<b>Методи:</b><br>" + methodAnalysis(incArr);
-
-  expA.innerHTML =
-    "Разход: "+Object.values(expG).reduce((a,b)=>a+Math.abs(b),0).toFixed(2)+" €<br>" +
-    "<b>Методи:</b><br>" + methodAnalysis(expArr);
-
+  new Chart(expenseChartCanvas, {
+    type: 'bar',
+    data: { labels: Object.keys(expenseData), datasets: [{ label: 'Разходи', data: Object.values(expenseData), backgroundColor: '#F44336' }] },
+    options: { responsive: true, maintainAspectRatio: false }
+  });
 }
 
-</script>
+// --- Зареждане на транзакции от Supabase ---
+async function loadTransactions() {
+  const { data, error } = await supabase
+    .from('transactions')
+    .select('*')
+    .eq('profile', currentProfile)
+    .gte('extract(month from created_at)', currentMonth);
 
-<!-- 🔹 UI за профили -->
-<div>
-<button onclick="switchProfile('личен')">👤 Личен</button>
-<button onclick="switchProfile('служебен')">🏢 Служебен</button>
-</div>
+  if (error) return console.error(error);
+  transactions = data;
+  updateUI();
+}
+
+// --- Initial ---
+loadTransactions();
