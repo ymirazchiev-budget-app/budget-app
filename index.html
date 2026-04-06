@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BudgetCloud_FINAL_v13</title>
+<title>BudgetCloud_FINAL_v14</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
 body { font-family:Arial; background:#0f172a; color:white; text-align:center; margin:0; padding:0; }
@@ -16,12 +16,17 @@ button { padding:4px 6px; margin:2px; border:none; border-radius:4px; cursor:poi
 .analysis { background:#020617; padding:10px; margin:5px 0; border-radius:10px; }
 canvas { margin-top:10px; }
 .summary { margin:5px; padding:5px; background:#1e293b; border-radius:5px; font-size:12px; display:flex; justify-content:space-around; }
+#filterMonth { margin:10px; padding:4px; border-radius:4px; }
 </style>
 </head>
 <body>
 
-<h3>💰 BudgetCloud_FINAL_v13</h3>
+<h3>💰 BudgetCloud_FINAL_v14</h3>
 <div class="balance" id="balance">0.00 €</div>
+
+<select id="filterMonth">
+  <option value="all">Всички месеци</option>
+</select>
 
 <button id="btnIncome">+ Доход</button>
 <button id="btnExpense">- Разход</button>
@@ -58,6 +63,13 @@ canvas { margin-top:10px; }
 let data = JSON.parse(localStorage.getItem("data") || "[]");
 let chartIncome, chartExpense;
 
+function getMonthOptions() {
+  let months = Array.from(new Set(data.map(t=>new Date(t.date).toLocaleString("bg-BG",{month:"long", year:"numeric"}))));
+  const sel = document.getElementById("filterMonth");
+  sel.innerHTML='<option value="all">Всички месеци</option>';
+  months.forEach(m=>sel.innerHTML += `<option value="${m}">${m}</option>`);
+}
+
 function addTransaction(type){
   let options = [];
   if(type==="expense") options = ["храна","пазар","ток","вода"];
@@ -76,15 +88,18 @@ function addTransaction(type){
   if(isNaN(val)) return;
   if(type==="expense") val = -Math.abs(val);
 
-  // Връщаме текста на бонуси като „бонус/подарък/клиент“
-  if(type==="bonus") name = name;
+  let date = new Date().toISOString();
 
-  data.push({id:Date.now(), name, fromWhom, amount: val, method, type});
+  data.push({id:Date.now(), name, fromWhom, amount: val, method, type, date});
   localStorage.setItem("data", JSON.stringify(data));
+  getMonthOptions();
   render();
 }
 
 function render(){
+  let sel = document.getElementById("filterMonth").value;
+  let filtered = sel==="all" ? data : data.filter(t=>new Date(t.date).toLocaleString("bg-BG",{month:"long", year:"numeric"})===sel);
+
   let incomeDiv = document.getElementById("incomeList");
   let expenseDiv = document.getElementById("expenseList");
   let incomeAnal = document.getElementById("incomeAnalysis");
@@ -100,7 +115,7 @@ function render(){
   let bal=0, incCats={}, expCats={};
   let totalIncome=0, totalExpense=0, totalBonus=0;
 
-  data.forEach(t=>{
+  filtered.forEach(t=>{
     let a = Number(t.amount);
     bal += a;
 
@@ -137,7 +152,6 @@ function render(){
 
   document.getElementById("balance").innerText = bal.toFixed(2)+" €";
 
-  // анализи текстово
   for(let k in incCats){
     let div = document.createElement("div");
     div.textContent = `${k}: ${incCats[k].toFixed(2)} €`;
@@ -149,7 +163,6 @@ function render(){
     expenseAnal.appendChild(div);
   }
 
-  // сумарен ред
   summaryDiv.innerHTML=`Доходи: ${totalIncome.toFixed(2)} € | Бонуси: ${totalBonus.toFixed(2)} € | Разходи: ${totalExpense.toFixed(2)} €`;
 
   drawChart("chartIncome", incCats, "green", chartIncome, c=>chartIncome=c);
@@ -159,6 +172,7 @@ function render(){
 function del(id){
   data = data.filter(t => t.id !== id);
   localStorage.setItem("data", JSON.stringify(data));
+  getMonthOptions();
   render();
 }
 
@@ -181,7 +195,9 @@ function drawChart(canvasId, cats, color, chartVar, setChart){
 document.getElementById("btnIncome").addEventListener("click",()=>addTransaction("income"));
 document.getElementById("btnExpense").addEventListener("click",()=>addTransaction("expense"));
 document.getElementById("btnBonus").addEventListener("click",()=>addTransaction("bonus"));
+document.getElementById("filterMonth").addEventListener("change", render);
 
+getMonthOptions();
 render();
 </script>
 
