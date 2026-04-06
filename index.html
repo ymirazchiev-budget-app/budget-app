@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BudgetCloud_FINAL_v10</title>
+<title>BudgetCloud_FINAL_v11</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
 body { font-family:Arial; background:#0f172a; color:white; text-align:center; margin:0; padding:0; }
@@ -19,7 +19,7 @@ canvas { margin-top:10px; }
 </head>
 <body>
 
-<h3>💰 BudgetCloud_FINAL_v10</h3>
+<h3>💰 BudgetCloud_FINAL_v11</h3>
 <div class="balance" id="balance">0.00 €</div>
 
 <button id="btnIncome">+ Доход</button>
@@ -62,13 +62,16 @@ function addTransaction(type){
   let name = prompt("За какво? (пример: "+options.join(", ")+")");
   if(!name) return;
 
+  let fromWhom = "";
+  if(type==="bonus") fromWhom = prompt("От кой обект/клиент?") || "-";
+
   let method = prompt("От къде? (банка/карта/кеш)") || "-";
 
   let val = parseFloat(prompt("Колко?").replace(",", "."));
   if(isNaN(val)) return;
   if(type==="expense") val = -Math.abs(val);
 
-  data.push({id:Date.now(), name, amount: val, method, type});
+  data.push({id:Date.now(), name, fromWhom, amount: val, method, type});
   localStorage.setItem("data", JSON.stringify(data));
   render();
 }
@@ -87,7 +90,11 @@ function render(){
 
     const div = document.createElement("div");
     div.className = "card";
-    div.innerHTML = `<span>${t.name} (${t.method})</span>`;
+
+    let label = t.name;
+    if(t.type==="bonus" && t.fromWhom) label += ` (${t.fromWhom})`;
+    label += ` (${t.method})`;
+    div.innerHTML = `<span>${label}</span>`;
 
     const span = document.createElement("span");
     span.textContent = `${a.toFixed(2)} € `;
