@@ -1,94 +1,26 @@
-<!DOCTYPE html>
-<html>
-<head>
-<meta name="viewport" content="width=device-width, initial-scale=1.0">
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
-<style>
-body { font-family: Arial; background:#0f172a; color:white; text-align:center; }
-.row { display:flex; justify-content:center; gap:10px; flex-wrap:wrap; }
-.col { width:45%; }
-.small { font-size:12px; }
-button { margin:3px; padding:5px; }
-canvas { width:45% !important; height:140px !important; }
-.totalRow { display:flex; justify-content:space-around; font-weight:bold; margin-top:5px; }
-</style>
-</head>
-<body>
-
-<h2>💰 BudgetCloud_FIX_v6</h2>
-<h1 id="balance">0 €</h1>
-
-<div>
-<button onclick="add('income')">Доход</button>
-<button onclick="add('bonus')">Бонус</button>
-<button onclick="add('expense')">Разход</button>
-<button onclick="window.print()">🖨</button>
-</div>
-
-<div class="row">
-
-<div class="col">
-<h3>Доход + Бонус</h3>
-<div id="incGroup"></div>
-<div id="inc"></div>
-</div>
-
-<div class="col">
-<h3>Разход</h3>
-<div id="expGroup"></div>
-<div id="exp"></div>
-</div>
-
-</div>
-
-<!-- ОБЩО НА ЕДИН РЕД -->
-<div class="totalRow">
-<div id="incA"></div>
-<div id="expA"></div>
-</div>
-
-<div class="row">
-<canvas id="c1"></canvas>
-<canvas id="c2"></canvas>
-</div>
-
-<select id="month" onchange="load()">
-<option value="all">Всички</option>
-<option value="1">1</option><option value="2">2</option>
-<option value="3">3</option><option value="4">4</option>
-<option value="5">5</option><option value="6">6</option>
-<option value="7">7</option><option value="8">8</option>
-<option value="9">9</option><option value="10">10</option>
-<option value="11">11</option><option value="12">12</option>
-</select>
-
-<div id="daily" class="small"></div>
+<!-- само показвам ключовите промени – не пипам основата -->
 
 <script>
 
-const db = supabase.createClient(
-"https://ipihscvyyxetkiajjllg.supabase.co",
-"sb_publishable_r7Bgf2u5ZK30-DQVHPSHHQ_xgnsXY2x"
-);
+// 🔹 ПРОФИЛ
+let currentProfile = "личен";
 
-let chart1, chart2;
-
-// 🔹 УМНИ СЪКРАЩЕНИЯ
-function normalize(text){
-  text = text.toLowerCase();
-
-  if(text.startsWith("хра")) return "храна";
-  if(text.startsWith("зап")) return "заплата";
-  if(text.includes("kaufland") || text.includes("billa")) return "храна";
-
-  return text;
+function switchProfile(p){
+  currentProfile = p;
+  load();
 }
 
+// 🔹 ДОБАВЯНЕ (FIX БОНУС)
 async function add(type){
-  let category = prompt("Какво?");
-  let method = prompt("Къде?");
+
+  let category = prompt("Какво? (пример: храна, ток, заплата, хра, зап)");
+  
+  let client = "";
+  if(type==="bonus"){
+    client = prompt("От кой? (клиент/обект)");
+  }
+
+  let method = prompt("Къде? (карта / кеш / банка)");
   let amount = parseFloat(prompt("Сума"));
 
   if(!category || isNaN(amount)) return;
@@ -97,20 +29,25 @@ async function add(type){
 
   if(type==="expense") amount = -Math.abs(amount);
 
-  await db.from("transactions").insert([{ type, category, method, amount }]);
+  await db.from("transactions").insert([{
+    type,
+    category,
+    method,
+    amount,
+    client,
+    profile: currentProfile
+  }]);
+
   load();
 }
 
-async function del(id){
-  await db.from("transactions").delete().eq("id", id);
-  load();
-}
-
+// 🔹 FILTER ПО ПРОФИЛ
 async function load(){
   const { data } = await db.from("transactions").select("*");
 
   let m = month.value;
-  let filtered = data || [];
+
+  let filtered = (data || []).filter(t => t.profile === currentProfile);
 
   if(m !== "all"){
     filtered = filtered.filter(t => new Date(t.created_at).getMonth()+1 == m);
@@ -119,18 +56,19 @@ async function load(){
   render(filtered);
 }
 
-function group(arr){
-  let map={};
-  arr.forEach(t=>{
-    map[t.category]=(map[t.category]||0)+t.amount;
-  });
-  return map;
-}
+// 🔹 АНАЛИЗ ПО МЕТОД
+function methodAnalysis(data){
 
-// 📅 BG дата
-function formatDate(d){
-  let date = new Date(d);
-  return date.getDate()+"/"+(date.getMonth()+1)+"/"+date.getFullYear();
+  let map = {};
+
+  data.forEach(t=>{
+    let key = t.method || "друго";
+    map[key] = (map[key]||0) + t.amount;
+  });
+
+  return Object.entries(map)
+    .map(([k,v])=>`${k}: ${Math.abs(v).toFixed(2)} €`)
+    .join("<br>");
 }
 
 function render(data){
@@ -141,59 +79,39 @@ function render(data){
   let incG = group(incArr);
   let expG = group(expArr);
 
-  incGroup.innerHTML = Object.entries(incG)
-    .map(([k,v])=>`${k}: ${v.toFixed(2)} €`).join("<br>");
-
-  expGroup.innerHTML = Object.entries(expG)
-    .map(([k,v])=>`${k}: ${Math.abs(v).toFixed(2)} €`).join("<br>");
-
+  // 👇 БОНУС С ОБЕКТ
   inc.innerHTML = incArr.map(t=>
-    `<div class="small">${formatDate(t.created_at)} | ${t.category} (${t.method}) ${t.amount.toFixed(2)}€
-    <button onclick="del('${t.id}')">X</button></div>`
+    `<div class="small">
+    ${formatDate(t.created_at)} | 
+    ${t.category} ${t.client ? "["+t.client+"]" : ""} 
+    (${t.method}) ${t.amount.toFixed(2)}€
+    <button onclick="del('${t.id}')">X</button>
+    </div>`
   ).join("");
 
   exp.innerHTML = expArr.map(t=>
-    `<div class="small">${formatDate(t.created_at)} | ${t.category} (${t.method}) ${t.amount.toFixed(2)}€
-    <button onclick="del('${t.id}')">X</button></div>`
+    `<div class="small">
+    ${formatDate(t.created_at)} | 
+    ${t.category} (${t.method}) ${t.amount.toFixed(2)}€
+    <button onclick="del('${t.id}')">X</button>
+    </div>`
   ).join("");
 
-  let incSum = Object.values(incG).reduce((a,b)=>a+b,0);
-  let expSum = Object.values(expG).reduce((a,b)=>a+Math.abs(b),0);
+  // 🔹 АНАЛИЗ ПО МЕТОД
+  incA.innerHTML =
+    "Доход: "+Object.values(incG).reduce((a,b)=>a+b,0).toFixed(2)+" €<br>" +
+    "<b>Методи:</b><br>" + methodAnalysis(incArr);
 
-  incA.innerHTML = "Доход: "+incSum.toFixed(2)+" €";
-  expA.innerHTML = "Разход: "+expSum.toFixed(2)+" €";
+  expA.innerHTML =
+    "Разход: "+Object.values(expG).reduce((a,b)=>a+Math.abs(b),0).toFixed(2)+" €<br>" +
+    "<b>Методи:</b><br>" + methodAnalysis(expArr);
 
-  balance.innerText = (incSum-expSum).toFixed(2)+" €";
-
-  // графики
-  if(chart1) chart1.destroy();
-  if(chart2) chart2.destroy();
-
-  chart1 = new Chart(c1,{
-    type:"bar",
-    data:{labels:Object.keys(incG),datasets:[{data:Object.values(incG),backgroundColor:"green"}]},
-    options:{plugins:{legend:{display:false}}}
-  });
-
-  chart2 = new Chart(c2,{
-    type:"bar",
-    data:{labels:Object.keys(expG),datasets:[{data:Object.values(expG).map(v=>Math.abs(v)),backgroundColor:"red"}]},
-    options:{plugins:{legend:{display:false}}}
-  });
-
-  // дневна
-  let days={};
-  data.forEach(t=>{
-    let d=formatDate(t.created_at);
-    days[d]=(days[d]||0)+t.amount;
-  });
-
-  daily.innerHTML = Object.entries(days)
-    .map(([d,v])=>`${d}: ${v.toFixed(2)} €`).join("<br>");
 }
 
-load();
-
 </script>
-</body>
-</html>
+
+<!-- 🔹 UI за профили -->
+<div>
+<button onclick="switchProfile('личен')">👤 Личен</button>
+<button onclick="switchProfile('служебен')">🏢 Служебен</button>
+</div>
