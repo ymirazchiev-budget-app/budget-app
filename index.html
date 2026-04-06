@@ -7,65 +7,65 @@
 
 <style>
 body { font-family: Arial; background:#0f172a; color:white; text-align:center; }
+.section { margin:10px 0; }
 .row { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
 .col { width:45%; }
-.item { font-size:14px; margin:2px; }
-button { margin:2px; padding:6px; }
+button { padding:6px; margin:2px; }
 canvas { height:120px !important; }
 .small { font-size:12px; opacity:0.8; }
+@media print {
+  button { display:none; }
+  body { background:white; color:black; }
+}
 </style>
 </head>
 <body>
 
-<h2>💰 BudgetCloud_RESTORE_STABLE_v3</h2>
-
+<h2>💰 BudgetCloud_FINAL_SAFE_v4</h2>
 <h1 id="balance">0 €</h1>
 
-<div class="row">
+<div class="section">
   <button onclick="add('income')">Доход</button>
   <button onclick="add('bonus')">Бонус</button>
   <button onclick="add('expense')">Разход</button>
+  <button onclick="window.print()">🖨 Печат</button>
 </div>
 
-<div class="row">
+<div class="section row">
   <div class="col">
     <h3>Доход + Бонус</h3>
+    <div id="incGroup"></div>
     <div id="inc"></div>
     <div id="incA"></div>
   </div>
 
   <div class="col">
     <h3>Разход</h3>
+    <div id="expGroup"></div>
     <div id="exp"></div>
     <div id="expA"></div>
   </div>
 </div>
 
-<div class="row">
+<div class="section row">
   <canvas id="c1"></canvas>
   <canvas id="c2"></canvas>
 </div>
 
-<div>
+<div class="section">
 Месец:
 <select id="month" onchange="load()">
   <option value="all">Всички</option>
-  <option value="1">1</option>
-  <option value="2">2</option>
-  <option value="3">3</option>
-  <option value="4">4</option>
-  <option value="5">5</option>
-  <option value="6">6</option>
-  <option value="7">7</option>
-  <option value="8">8</option>
-  <option value="9">9</option>
-  <option value="10">10</option>
-  <option value="11">11</option>
-  <option value="12">12</option>
+  <option value="1">1</option><option value="2">2</option>
+  <option value="3">3</option><option value="4">4</option>
+  <option value="5">5</option><option value="6">6</option>
+  <option value="7">7</option><option value="8">8</option>
+  <option value="9">9</option><option value="10">10</option>
+  <option value="11">11</option><option value="12">12</option>
 </select>
 </div>
 
-<div id="daily" class="small"></div>
+<div class="section small" id="daily"></div>
 
 <script>
 
@@ -78,8 +78,8 @@ let chart1, chart2;
 
 async function load(){
   const { data } = await db.from("transactions").select("*");
-  let m = document.getElementById("month").value;
 
+  let m = month.value;
   let filtered = data || [];
 
   if(m !== "all"){
@@ -90,18 +90,15 @@ async function load(){
 }
 
 async function add(type){
-  let category = prompt("Какво? (храна, ток, заплата)");
-  let method = prompt("Къде? (кеш/карта/банка)");
+  let category = prompt("Какво?");
+  let method = prompt("Къде?");
   let amount = parseFloat(prompt("Сума"));
 
   if(!category || isNaN(amount)) return;
 
   if(type==="expense") amount = -Math.abs(amount);
 
-  await db.from("transactions").insert([{
-    type, category, method, amount
-  }]);
-
+  await db.from("transactions").insert([{ type, category, method, amount }]);
   load();
 }
 
@@ -111,10 +108,9 @@ async function del(id){
 }
 
 function group(arr){
-  let map = {};
+  let map={};
   arr.forEach(t=>{
-    let key = t.category;
-    map[key] = (map[key]||0) + t.amount;
+    map[t.category]=(map[t.category]||0)+t.amount;
   });
   return map;
 }
@@ -127,44 +123,40 @@ function render(data){
   let incG = group(inc);
   let expG = group(exp);
 
-  let incHTML="", expHTML="";
-  let incSum=0, expSum=0;
+  // ОБЕДИНЕНИ
+  incGroup.innerHTML = Object.entries(incG)
+    .map(([k,v])=>`${k}: ${v.toFixed(2)} €`).join("<br>");
 
-  Object.keys(incG).forEach(k=>{
-    incHTML += `${k}: ${incG[k].toFixed(2)} €<br>`;
-    incSum += incG[k];
-  });
+  expGroup.innerHTML = Object.entries(expG)
+    .map(([k,v])=>`${k}: ${Math.abs(v).toFixed(2)} €`).join("<br>");
 
-  Object.keys(expG).forEach(k=>{
-    expHTML += `${k}: ${Math.abs(expG[k]).toFixed(2)} €<br>`;
-    expSum += Math.abs(expG[k]);
-  });
+  // РЕДОВЕ
+  inc.innerHTML="";
+  exp.innerHTML="";
 
-  // оригинални редове + X
   data.forEach(t=>{
     let row = `<div class="small">${t.category} (${t.method}) ${t.amount.toFixed(2)}€
     <button onclick="del('${t.id}')">X</button></div>`;
 
-    if(t.type==="income"||t.type==="bonus") incHTML += row;
-    else expHTML += row;
+    if(t.type==="income"||t.type==="bonus") inc.innerHTML+=row;
+    else exp.innerHTML+=row;
   });
 
-  document.getElementById("inc").innerHTML = incHTML;
-  document.getElementById("exp").innerHTML = expHTML;
+  let incSum = Object.values(incG).reduce((a,b)=>a+b,0);
+  let expSum = Object.values(expG).reduce((a,b)=>a+Math.abs(b),0);
 
-  document.getElementById("incA").innerHTML = "Общо: "+incSum.toFixed(2)+" €";
-  document.getElementById("expA").innerHTML = "Общо: "+expSum.toFixed(2)+" €";
+  incA.innerHTML = "Общо: "+incSum.toFixed(2)+" €";
+  expA.innerHTML = "Общо: "+expSum.toFixed(2)+" €";
 
-  // баланс
-  document.getElementById("balance").innerText = (incSum - expSum).toFixed(2)+" €";
+  balance.innerText = (incSum-expSum).toFixed(2)+" €";
 
-  // анализ
+  // АНАЛИЗ
   let max = Object.entries(expG).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1]))[0];
   if(max){
-    document.getElementById("expA").innerHTML += `<br>Най-много: ${max[0]} (${Math.abs(max[1]).toFixed(2)} €)`;
+    expA.innerHTML += `<br>Най-много: ${max[0]} (${Math.abs(max[1]).toFixed(2)} €)`;
   }
 
-  // графики
+  // ГРАФИКИ
   if(chart1) chart1.destroy();
   if(chart2) chart2.destroy();
 
@@ -180,19 +172,15 @@ function render(data){
     options:{plugins:{legend:{display:false}}}
   });
 
-  // дневна разбивка
-  let days = {};
+  // ДНЕВНА
+  let days={};
   data.forEach(t=>{
-    let d = new Date(t.created_at).toLocaleDateString();
-    days[d] = (days[d]||0) + t.amount;
+    let d=new Date(t.created_at).toLocaleDateString();
+    days[d]=(days[d]||0)+t.amount;
   });
 
-  let dailyHTML="";
-  Object.keys(days).forEach(d=>{
-    dailyHTML += `${d}: ${days[d].toFixed(2)} €<br>`;
-  });
-
-  document.getElementById("daily").innerHTML = dailyHTML;
+  daily.innerHTML = Object.entries(days)
+    .map(([d,v])=>`${d}: ${v.toFixed(2)} €`).join("<br>");
 }
 
 load();
