@@ -2,22 +2,24 @@
 <html>
 <head>
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-
 <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
 body { font-family: Arial; background:#0f172a; color:white; text-align:center; }
-.row { display:flex; gap:10px; justify-content:center; }
+.row { display:flex; gap:10px; justify-content:center; flex-wrap:wrap; }
 .col { width:45%; }
 .item { font-size:14px; margin:2px; }
 button { margin:2px; padding:6px; }
 canvas { height:120px !important; }
+.small { font-size:12px; opacity:0.8; }
 </style>
 </head>
 <body>
 
-<h2>💰 BudgetCloud_RESTORE_STABLE_v2</h2>
+<h2>💰 BudgetCloud_RESTORE_STABLE_v3</h2>
+
+<h1 id="balance">0 €</h1>
 
 <div class="row">
   <button onclick="add('income')">Доход</button>
@@ -44,6 +46,27 @@ canvas { height:120px !important; }
   <canvas id="c2"></canvas>
 </div>
 
+<div>
+Месец:
+<select id="month" onchange="load()">
+  <option value="all">Всички</option>
+  <option value="1">1</option>
+  <option value="2">2</option>
+  <option value="3">3</option>
+  <option value="4">4</option>
+  <option value="5">5</option>
+  <option value="6">6</option>
+  <option value="7">7</option>
+  <option value="8">8</option>
+  <option value="9">9</option>
+  <option value="10">10</option>
+  <option value="11">11</option>
+  <option value="12">12</option>
+</select>
+</div>
+
+<div id="daily" class="small"></div>
+
 <script>
 
 const db = supabase.createClient(
@@ -55,11 +78,19 @@ let chart1, chart2;
 
 async function load(){
   const { data } = await db.from("transactions").select("*");
-  render(data || []);
+  let m = document.getElementById("month").value;
+
+  let filtered = data || [];
+
+  if(m !== "all"){
+    filtered = filtered.filter(t => new Date(t.created_at).getMonth()+1 == m);
+  }
+
+  render(filtered);
 }
 
 async function add(type){
-  let category = prompt("Какво?");
+  let category = prompt("Какво? (храна, ток, заплата)");
   let method = prompt("Къде? (кеш/карта/банка)");
   let amount = parseFloat(prompt("Сума"));
 
@@ -79,58 +110,93 @@ async function del(id){
   load();
 }
 
+function group(arr){
+  let map = {};
+  arr.forEach(t=>{
+    let key = t.category;
+    map[key] = (map[key]||0) + t.amount;
+  });
+  return map;
+}
+
 function render(data){
+
+  let inc = data.filter(t=>t.type==="income"||t.type==="bonus");
+  let exp = data.filter(t=>t.type==="expense");
+
+  let incG = group(inc);
+  let expG = group(exp);
 
   let incHTML="", expHTML="";
   let incSum=0, expSum=0;
 
-  let incL=[], incD=[];
-  let expL=[], expD=[];
-
-  data.forEach(t=>{
-
-    let row = `${t.category} (${t.method}) ${t.amount}€ 
-    <button onclick="del('${t.id}')">X</button><br>`;
-
-    if(t.type==="income" || t.type==="bonus"){
-      incHTML += row;
-      incSum += t.amount;
-      incL.push(t.category);
-      incD.push(t.amount);
-    }else{
-      expHTML += row;
-      expSum += Math.abs(t.amount);
-      expL.push(t.category);
-      expD.push(Math.abs(t.amount));
-    }
-
+  Object.keys(incG).forEach(k=>{
+    incHTML += `${k}: ${incG[k].toFixed(2)} €<br>`;
+    incSum += incG[k];
   });
 
-  inc.innerHTML = incHTML;
-  exp.innerHTML = expHTML;
+  Object.keys(expG).forEach(k=>{
+    expHTML += `${k}: ${Math.abs(expG[k]).toFixed(2)} €<br>`;
+    expSum += Math.abs(expG[k]);
+  });
 
-  incA.innerHTML = "Общо: " + incSum.toFixed(2) + " €";
-  expA.innerHTML = "Общо: " + expSum.toFixed(2) + " €";
+  // оригинални редове + X
+  data.forEach(t=>{
+    let row = `<div class="small">${t.category} (${t.method}) ${t.amount.toFixed(2)}€
+    <button onclick="del('${t.id}')">X</button></div>`;
 
+    if(t.type==="income"||t.type==="bonus") incHTML += row;
+    else expHTML += row;
+  });
+
+  document.getElementById("inc").innerHTML = incHTML;
+  document.getElementById("exp").innerHTML = expHTML;
+
+  document.getElementById("incA").innerHTML = "Общо: "+incSum.toFixed(2)+" €";
+  document.getElementById("expA").innerHTML = "Общо: "+expSum.toFixed(2)+" €";
+
+  // баланс
+  document.getElementById("balance").innerText = (incSum - expSum).toFixed(2)+" €";
+
+  // анализ
+  let max = Object.entries(expG).sort((a,b)=>Math.abs(b[1])-Math.abs(a[1]))[0];
+  if(max){
+    document.getElementById("expA").innerHTML += `<br>Най-много: ${max[0]} (${Math.abs(max[1]).toFixed(2)} €)`;
+  }
+
+  // графики
   if(chart1) chart1.destroy();
   if(chart2) chart2.destroy();
 
   chart1 = new Chart(c1, {
     type:"bar",
-    data:{ labels:incL, datasets:[{data:incD, backgroundColor:"green"}] },
+    data:{ labels:Object.keys(incG), datasets:[{data:Object.values(incG), backgroundColor:"green"}]},
     options:{plugins:{legend:{display:false}}}
   });
 
   chart2 = new Chart(c2, {
     type:"bar",
-    data:{ labels:expL, datasets:[{data:expD, backgroundColor:"red"}] },
+    data:{ labels:Object.keys(expG), datasets:[{data:Object.values(expG).map(v=>Math.abs(v)), backgroundColor:"red"}]},
     options:{plugins:{legend:{display:false}}}
   });
+
+  // дневна разбивка
+  let days = {};
+  data.forEach(t=>{
+    let d = new Date(t.created_at).toLocaleDateString();
+    days[d] = (days[d]||0) + t.amount;
+  });
+
+  let dailyHTML="";
+  Object.keys(days).forEach(d=>{
+    dailyHTML += `${d}: ${days[d].toFixed(2)} €<br>`;
+  });
+
+  document.getElementById("daily").innerHTML = dailyHTML;
 }
 
 load();
 
 </script>
-
 </body>
 </html>
