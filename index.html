@@ -3,34 +3,38 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BudgetCloud_NEXT_LEVEL_v1</title>
+<title>BudgetCloud_AI_Daily_v1</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
-  body { font-family: Arial, sans-serif; margin: 10px; background: #f4f6f8; }
-  h2 { margin-top: 10px; }
-  #controls { display: flex; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
-  button { padding: 5px 10px; cursor: pointer; }
-  .columns { display: flex; gap: 10px; margin-bottom: 10px; }
-  .column { flex: 1; background: white; padding: 10px; border-radius: 6px; box-shadow: 0 0 4px rgba(0,0,0,0.1); }
-  .row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #eee; }
-  canvas { height: 150px !important; width: 100% !important; }
-  select, input { padding: 4px; margin-right: 5px; }
+body { font-family: Arial, sans-serif; margin: 10px; background: #f4f6f8; }
+h2 { margin-top: 10px; }
+#controls { display: flex; gap: 5px; flex-wrap: wrap; margin-bottom: 10px; }
+button { padding: 5px 10px; cursor: pointer; }
+.columns { display: flex; gap: 10px; margin-bottom: 10px; }
+.column { flex: 1; background: white; padding: 10px; border-radius: 6px; box-shadow: 0 0 4px rgba(0,0,0,0.1); }
+.row { display: flex; justify-content: space-between; padding: 4px 0; border-bottom: 1px solid #eee; }
+canvas { height: 150px !important; width: 100% !important; }
+select, input { padding: 4px; }
 </style>
 </head>
 <body>
 
-<h2>BudgetCloud_NEXT_LEVEL_v1</h2>
+<h2>BudgetCloud_AI_Daily_v1</h2>
 
 <div id="controls">
   <select id="profile-select">
     <option value="Личен">👤 Личен</option>
     <option value="Служебен">🏢 Служебен</option>
   </select>
+
   <select id="month-select"></select>
+  <select id="day-select"></select>
+
   <input type="text" id="category-input" placeholder="Категория">
   <input type="text" id="method-input" placeholder="Банка/Кеш/Карта">
   <input type="text" id="object-input" placeholder="Обект/Клиент">
   <input type="number" id="amount-input" placeholder="Сума">
+
   <select id="type-select">
     <option value="Доход">Доход</option>
     <option value="Бонус">Бонус</option>
@@ -62,8 +66,10 @@ const supabase = createClient(SUPABASE_URL, SUPABASE_KEY);
 
 let transactions = [];
 let categoriesMemory = {};
+let methodsMemory = {};
 let currentProfile = 'Личен';
 let currentMonth = new Date().getMonth() + 1;
+let currentDay = new Date().getDate();
 
 const incomeColumn = document.getElementById('income-column');
 const expenseColumn = document.getElementById('expense-column');
@@ -71,98 +77,105 @@ const incomeChartCanvas = document.getElementById('income-chart');
 const expenseChartCanvas = document.getElementById('expense-chart');
 const profileSelect = document.getElementById('profile-select');
 const monthSelect = document.getElementById('month-select');
+const daySelect = document.getElementById('day-select');
 
 for (let m=1; m<=12; m++) {
   const opt = document.createElement('option');
-  opt.value = m;
-  opt.text = m;
-  monthSelect.appendChild(opt);
+  opt.value = m; opt.text = m; monthSelect.appendChild(opt);
 }
 monthSelect.value = currentMonth;
 
+function updateDays() {
+  daySelect.innerHTML = '';
+  const daysInMonth = new Date(new Date().getFullYear(), currentMonth, 0).getDate();
+  for(let d=1; d<=daysInMonth; d++){
+    const opt = document.createElement('option'); opt.value=d; opt.text=d; daySelect.appendChild(opt);
+  }
+  daySelect.value = currentDay;
+}
+updateDays();
+
 profileSelect.onchange = () => { currentProfile = profileSelect.value; loadTransactions(); };
-monthSelect.onchange = () => { currentMonth = parseInt(monthSelect.value); loadTransactions(); };
+monthSelect.onchange = () => { currentMonth = parseInt(monthSelect.value); updateDays(); loadTransactions(); };
+daySelect.onchange = () => { currentDay = parseInt(daySelect.value); loadTransactions(); };
 
 async function addTransaction(type, category, method, amount, object) {
   if (!amount || isNaN(amount)) return alert('Моля въведете сума');
-  const { data, error } = await supabase
-    .from('transactions')
-    .insert([{ type, category, method, amount, object, profile: currentProfile, created_at: new Date() }]);
+  const { data, error } = await supabase.from('transactions').insert([{ type, category, method, amount, object, profile: currentProfile, created_at: new Date() }]);
   if (error) return console.error(error);
   transactions.push(data[0]);
-  memorizeCategory(type, category, method);
+  memorizeAI(type, category, method);
   updateUI();
 }
 
-function memorizeCategory(type, category, method) {
-  const key = `${type}_${category}_${method}`;
-  categoriesMemory[key] = (categoriesMemory[key] || 0) + 1;
+function memorizeAI(type, category, method) {
+  categoriesMemory[category] = (categoriesMemory[category]||0)+1;
+  methodsMemory[method] = (methodsMemory[method]||0)+1;
 }
 
 async function deleteTransaction(id) {
   const { error } = await supabase.from('transactions').delete().eq('id', id);
-  if (error) return console.error(error);
-  transactions = transactions.filter(t => t.id !== id);
+  if(error) return console.error(error);
+  transactions = transactions.filter(t=>t.id!==id);
   updateUI();
 }
 
 function updateUI() {
   incomeColumn.innerHTML = '<h3>Доход + Бонус</h3>';
   expenseColumn.innerHTML = '<h3>Разход</h3>';
-
-  const incomeData = {};
-  const expenseData = {};
-
-  transactions.forEach(t => {
+  
+  const incomeData = {}; const expenseData = {};
+  transactions.forEach(t=>{
+    const date = new Date(t.created_at);
+    if(date.getMonth()+1!==currentMonth || date.getDate()!==currentDay) return;
     const key = `${t.category} (${t.method})`;
-    if (t.type==='Доход' || t.type==='Бонус') incomeData[key]=(incomeData[key]||0)+parseFloat(t.amount);
+    if(t.type==='Доход' || t.type==='Бонус') incomeData[key]=(incomeData[key]||0)+parseFloat(t.amount);
     else expenseData[key]=(expenseData[key]||0)+parseFloat(t.amount);
   });
 
   Object.entries(incomeData).forEach(([k,v])=>{
-    const row=document.createElement('div');
-    row.className='row';
-    row.innerHTML=`${k}: ${v.toFixed(2)} € <button onclick="deleteTransaction(${transactions.find(t=>t.category+' ('+t.method+')'===k).id})">X</button>`;
+    const row=document.createElement('div'); row.className='row';
+    const tObj = transactions.find(t=>`${t.category} (${t.method})`===k);
+    row.innerHTML=`${k}: ${v.toFixed(2)} € ${tObj.object?'- '+tObj.object:''} <button onclick="deleteTransaction(${tObj.id})">X</button>`;
     incomeColumn.appendChild(row);
   });
 
   Object.entries(expenseData).forEach(([k,v])=>{
-    const row=document.createElement('div');
-    row.className='row';
-    row.innerHTML=`${k}: ${v.toFixed(2)} € <button onclick="deleteTransaction(${transactions.find(t=>t.category+' ('+t.method+')'===k).id})">X</button>`;
+    const row=document.createElement('div'); row.className='row';
+    const tObj = transactions.find(t=>`${t.category} (${t.method})`===k);
+    row.innerHTML=`${k}: ${v.toFixed(2)} € ${tObj.object?'- '+tObj.object:''} <button onclick="deleteTransaction(${tObj.id})">X</button>`;
     expenseColumn.appendChild(row);
   });
 
   renderCharts(incomeData, expenseData);
 }
 
-function renderCharts(incomeData, expenseData) {
-  new Chart(incomeChartCanvas, { type:'bar', data:{ labels:Object.keys(incomeData), datasets:[{ label:'Доход + Бонус', data:Object.values(incomeData), backgroundColor:'#4CAF50' }] }, options:{ responsive:true, maintainAspectRatio:false }});
-  new Chart(expenseChartCanvas, { type:'bar', data:{ labels:Object.keys(expenseData), datasets:[{ label:'Разходи', data:Object.values(expenseData), backgroundColor:'#F44336' }] }, options:{ responsive:true, maintainAspectRatio:false }});
+function renderCharts(incomeData, expenseData){
+  new Chart(incomeChartCanvas,{ type:'bar', data:{ labels:Object.keys(incomeData), datasets:[{ label:'Доход + Бонус', data:Object.values(incomeData), backgroundColor:'#4CAF50' }] }, options:{ responsive:true, maintainAspectRatio:false }});
+  new Chart(expenseChartCanvas,{ type:'bar', data:{ labels:Object.keys(expenseData), datasets:[{ label:'Разходи', data:Object.values(expenseData), backgroundColor:'#F44336' }] }, options:{ responsive:true, maintainAspectRatio:false }});
 }
 
 async function loadTransactions() {
-  const { data, error } = await supabase
-    .from('transactions')
-    .select('*')
-    .eq('profile', currentProfile)
-    .gte('extract(month from created_at)', currentMonth);
-  if (error) return console.error(error);
+  const { data, error } = await supabase.from('transactions').select('*').eq('profile',currentProfile);
+  if(error) return console.error(error);
   transactions = data;
   updateUI();
 }
 
 function addTransactionUI() {
-  const type=document.getElementById('type-select').value;
-  const category=document.getElementById('category-input').value || 'Без категория';
-  const method=document.getElementById('method-input').value || 'Кеш';
-  const amount=parseFloat(document.getElementById('amount-input').value);
-  const object=document.getElementById('object-input').value || '';
+  let type=document.getElementById('type-select').value;
+  let category=document.getElementById('category-input').value||'Без категория';
+  let method=document.getElementById('method-input').value||'Кеш';
+  let amount=parseFloat(document.getElementById('amount-input').value);
+  let object=document.getElementById('object-input').value||'';
   addTransaction(type,category,method,amount,object);
+
+  // AI dropdown предложения
+  if(categoriesMemory[category]>=2) document.getElementById('category-input').value = category;
+  if(methodsMemory[method]>=2) document.getElementById('method-input').value = method;
 }
 
 loadTransactions();
 </script>
-
 </body>
 </html>
