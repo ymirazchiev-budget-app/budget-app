@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BudgetCloud_MONTHLY_REVOLUT_v5</title>
+<title>BudgetCloud_FIXED_COLUMNS_v6</title>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
@@ -12,28 +12,27 @@ body { font-family:Arial; background:#0f172a; color:white; text-align:center; }
 
 button { padding:6px; margin:3px; border:none; border-radius:5px; cursor:pointer; font-size:13px; }
 
+.container {
+  display:flex;
+  justify-content:center;
+  gap:10px;
+}
+
+.col {
+  width:45%;
+}
+
 .card {
   background:#1e293b;
-  margin:2px auto;
-  padding:3px 6px;
+  margin:2px;
+  padding:4px;
   border-radius:5px;
   font-size:12px;
-  max-width:400px;
   display:flex;
   justify-content:space-between;
 }
 
-.day {
-  background:#020617;
-  margin-top:8px;
-  padding:5px;
-  border-radius:6px;
-  font-weight:bold;
-}
-
 .balance { font-size:22px; margin:10px; }
-
-.analysis { background:#020617; padding:10px; margin:10px; border-radius:10px; }
 
 select { padding:5px; margin:5px; }
 
@@ -42,7 +41,7 @@ select { padding:5px; margin:5px; }
 
 <body>
 
-<h3>💰 BudgetCloud_MONTHLY_REVOLUT_v5</h3>
+<h3>💰 BudgetCloud_FIXED_COLUMNS_v6</h3>
 
 <div class="balance" id="balance">0.00 €</div>
 
@@ -53,44 +52,44 @@ select { padding:5px; margin:5px; }
 <button onclick="flow('income')">+ Доход</button>
 <button onclick="flow('expense')">- Разход</button>
 <button onclick="flow('bonus')">💎 Бонус</button>
-<button onclick="window.print()">🖨️ Печат</button>
 
-<div id="list"></div>
+<div class="container">
+  <div class="col">
+    <h4>Доходи / Бонуси</h4>
+    <div id="incomeList"></div>
+  </div>
 
-<div class="analysis">
-  <b>📊 Разходи по категории</b>
-  <div id="analysis"></div>
-  <canvas id="chart"></canvas>
+  <div class="col">
+    <h4>Разходи</h4>
+    <div id="expenseList"></div>
+  </div>
 </div>
 
 <script>
 
 let data = JSON.parse(localStorage.getItem("data") || "[]");
-let chart;
 
 // FLOW
 function flow(type){
 
-  let nameOptions = [];
+  let options = [];
 
   if(type==="expense"){
-    nameOptions = ["храна","пазар","ток","вода","наем","гориво"];
+    options = ["храна","пазар","ток","вода"];
   }
 
   if(type==="income"){
-    nameOptions = ["заплата","помощи"];
+    options = ["заплата","помощи"];
   }
 
   if(type==="bonus"){
-    nameOptions = ["запл","под.","клиент"];
+    options = ["заплата","подарък","клиент"];
   }
 
-  let name = prompt("Избери или напиши:\n\n" + nameOptions.join(", "));
+  let name = prompt("Избери или напиши:\n" + options.join(", "));
   if(!name) return;
 
-  name = autoCategory(name);
-
-  let method = prompt("Къде? (банка/карта/кеш)");
+  let method = prompt("Къде?");
   if(!method) method="-";
 
   let val = parseFloat(prompt("Колко?").replace(",", "."));
@@ -103,24 +102,29 @@ function flow(type){
     name,
     amount: val,
     method,
-    date: new Date().toISOString()
+    date: new Date().toISOString(),
+    type
   });
 
   localStorage.setItem("data", JSON.stringify(data));
+
   render();
 }
 
-// MONTH FILTER
-function getMonths(){
-  let months = [...new Set(data.map(d => d.date.slice(0,7)))];
-  return months.sort().reverse();
-}
-
+// MONTHS
 function initMonths(){
-  const sel = document.getElementById("monthFilter");
+  let sel = document.getElementById("monthFilter");
+
+  let months = [...new Set(data.map(d => d.date.slice(0,7)))];
+
+  if(months.length === 0){
+    let now = new Date().toISOString().slice(0,7);
+    months = [now];
+  }
+
   sel.innerHTML="";
 
-  getMonths().forEach(m=>{
+  months.sort().reverse().forEach(m=>{
     let opt=document.createElement("option");
     opt.value=m;
     opt.textContent=m;
@@ -139,101 +143,33 @@ function render(){
 
   let filtered = data.filter(d => d.date.startsWith(selected));
 
-  let list = document.getElementById("list");
-  list.innerHTML="";
+  let incomeDiv = document.getElementById("incomeList");
+  let expenseDiv = document.getElementById("expenseList");
 
-  let bal=0;
-  let cats={};
+  incomeDiv.innerHTML="";
+  expenseDiv.innerHTML="";
 
-  // групиране по дни
-  let days = {};
+  let bal = 0;
 
   filtered.forEach(t=>{
-    let day = t.date.slice(0,10);
+    let a = Number(t.amount);
+    bal += a;
 
-    if(!days[day]) days[day]=[];
-    days[day].push(t);
-  });
+    const div = document.createElement("div");
+    div.className="card";
+    div.innerHTML = `
+      <span>${t.name} (${t.method})</span>
+      <span>${a.toFixed(2)} €</span>
+    `;
 
-  Object.keys(days).sort().reverse().forEach(day=>{
-
-    let daySum = 0;
-
-    const dDiv = document.createElement("div");
-    dDiv.className="day";
-
-    days[day].forEach(t=>{
-      daySum += Number(t.amount);
-      bal += Number(t.amount);
-
-      if(t.amount < 0){
-        if(!cats[t.name]) cats[t.name]=0;
-        cats[t.name]+=Math.abs(t.amount);
-      }
-    });
-
-    dDiv.innerText = `${day} | ${daySum.toFixed(2)} €`;
-    list.appendChild(dDiv);
-
-    days[day].forEach(t=>{
-      const div=document.createElement("div");
-      div.className="card";
-
-      div.innerHTML = `
-        <span>${t.name} (${t.method})</span>
-        <span>${Number(t.amount).toFixed(2)} €</span>
-      `;
-
-      list.appendChild(div);
-    });
-
+    if(a >= 0){
+      incomeDiv.appendChild(div);
+    } else {
+      expenseDiv.appendChild(div);
+    }
   });
 
   document.getElementById("balance").innerText = bal.toFixed(2)+" €";
-
-  // анализ
-  const aDiv=document.getElementById("analysis");
-  aDiv.innerHTML="";
-
-  let labels=[], values=[];
-
-  for(let c in cats){
-    labels.push(c);
-    values.push(cats[c]);
-
-    let p=document.createElement("div");
-    p.innerText = c + ": " + cats[c].toFixed(2)+" €";
-    aDiv.appendChild(p);
-  }
-
-  draw(labels, values);
-}
-
-// GRAPH
-function draw(labels, values){
-  const ctx=document.getElementById("chart");
-
-  if(chart) chart.destroy();
-
-  chart=new Chart(ctx,{
-    type:"bar",
-    data:{
-      labels,
-      datasets:[{
-        data:values,
-        backgroundColor:"#ef4444"
-      }]
-    }
-  });
-}
-
-// AUTO CATEGORY
-function autoCategory(name){
-  let n=name.toLowerCase();
-  if(n.includes("пица") || n.includes("храна")) return "храна";
-  if(n.includes("ток")) return "ток";
-  if(n.includes("пазар")) return "пазар";
-  return name;
 }
 
 // START
