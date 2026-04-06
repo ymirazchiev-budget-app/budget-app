@@ -7,7 +7,7 @@
 <style>
 body { font-family: Arial; background:#0f172a; color:white; text-align:center; margin:0; }
 input, select, button { padding:6px 8px; margin:4px; border-radius:4px; }
-button { cursor:pointer; }
+button { cursor:pointer; min-width:80px; }
 #app { display:none; margin-top:10px; }
 .row { display:flex; justify-content:center; gap:20px; flex-wrap:wrap; }
 .column { display:flex; flex-direction:column; gap:4px; width:180px; }
@@ -18,7 +18,7 @@ canvas { background:#1e293b; border-radius:8px; margin:5px; }
 </head>
 <body>
 
-<h2>💰 BudgetCloud_Stable</h2>
+<h2>💰 BudgetCloud_MinStable</h2>
 
 <div id="loginDiv">
 <input id="email" placeholder="Email" value="u2m@mail.bg">
@@ -84,18 +84,18 @@ async function login(){
 }
 
 async function addTransaction(type){
-  let name="", from="", method="", amount=0;
-  if(type==="bonus"){ name="Бонус"; from=prompt("От кого/клиент?"); method=prompt("Къде (банка/кеш/карта)?"); amount=parseFloat(prompt("Сума:")); }
-  else if(type==="income"){ name=prompt("Доход (заплата/помощи)?"); method=prompt("Къде (банка/кеш/карта)?"); amount=parseFloat(prompt("Сума:")); }
+  let name="", amount=0, method="";
+  if(type==="bonus"){ name="Бонус"; method=prompt("Къде (банка/кеш/карта)?"); amount=parseFloat(prompt("Сума:")); }
+  else if(type==="income"){ name=prompt("Доход (заплата/помощи)"); method=prompt("Къде (банка/кеш/карта)?"); amount=parseFloat(prompt("Сума:")); }
   else { name=prompt("За какво?"); method=prompt("Къде (банка/кеш/карта)?"); amount=-Math.abs(parseFloat(prompt("Сума:"))); }
   if(isNaN(amount)) return;
-  await client.from("transactions").insert({ user_id:user.id, type, name, from, method, amount, created_at:new Date().toISOString() });
+  await client.from("transactions").insert({ user_id:user.id, type, name, method, amount, created_at:new Date().toISOString() });
   load();
 }
 
 async function load(){
   const month = monthSelect.value;
-  let { data, error } = await client.from("transactions")
+  let { data } = await client.from("transactions")
     .select("*")
     .eq("user_id", user.id)
     .gte("created_at", new Date(new Date().getFullYear(), month-1, 1).toISOString())
