@@ -1,205 +1,186 @@
 <!DOCTYPE html>
-<html lang="bg">
+<html>
 <head>
-<meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BudgetCloud_FINAL_v14</title>
+<script src="https://unpkg.com/@supabase/supabase-js@2"></script>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
-body { font-family:Arial; background:#0f172a; color:white; text-align:center; margin:0; padding:0; }
-button { padding:4px 6px; margin:2px; border:none; border-radius:4px; cursor:pointer; font-size:12px; }
-.container { display:flex; justify-content:center; gap:10px; flex-wrap:wrap; }
-.col { width:45%; min-width:250px; }
-.card { background:#1e293b; margin:2px; padding:4px 6px; border-radius:5px; font-size:12px; display:flex; justify-content:space-between; align-items:center; }
-.card button { padding:2px 4px; font-size:10px; }
-.balance { font-size:22px; margin:10px; }
-.analysis { background:#020617; padding:10px; margin:5px 0; border-radius:10px; }
-canvas { margin-top:10px; }
-.summary { margin:5px; padding:5px; background:#1e293b; border-radius:5px; font-size:12px; display:flex; justify-content:space-around; }
-#filterMonth { margin:10px; padding:4px; border-radius:4px; }
+body { font-family: Arial; background: #0f172a; color: white; text-align: center; margin:0; }
+input, select, button { padding: 6px 8px; margin: 4px; border-radius:4px; }
+button { cursor:pointer; }
+#app { display:none; margin-top:10px; }
+.row { display:flex; justify-content:center; gap:20px; flex-wrap:wrap; }
+.column { display:flex; flex-direction:column; gap:4px; width: 180px; }
+.transaction { font-size:0.9em; padding:2px 0; border-bottom:1px solid #333; }
+h1,h2,h3 { margin:6px 0; }
+canvas { background:#1e293b; border-radius:8px; margin:5px; }
 </style>
 </head>
 <body>
 
-<h3>💰 BudgetCloud_FINAL_v14</h3>
-<div class="balance" id="balance">0.00 €</div>
+<h2>💰 BudgetCloud_v15</h2>
 
-<select id="filterMonth">
-  <option value="all">Всички месеци</option>
-</select>
+<!-- Login -->
+<div id="loginDiv">
+<input id="email" placeholder="Email" value="u2m@mail.bg">
+<input id="pass" type="password" placeholder="Password" value="Test9888">
+<button onclick="login()">Login / SignUp</button>
+</div>
 
-<button id="btnIncome">+ Доход</button>
-<button id="btnExpense">- Разход</button>
-<button id="btnBonus">💎 Бонус</button>
-<button onclick="window.print()">🖨️ Печат</button>
+<!-- App -->
+<div id="app">
+<h1 id="balance">0 €</h1>
 
-<div class="container">
-  <div class="col">
-    <h4>Доходи / Бонуси</h4>
+<div class="row">
+  <div class="column">
+    <button onclick="addTransaction('income')">+ Доход</button>
+    <button onclick="addTransaction('bonus')">💎 Бонус</button>
     <div id="incomeList"></div>
+    <canvas id="incomeChart" width="200" height="200"></canvas>
   </div>
-  <div class="col">
-    <h4>Разходи</h4>
+  <div class="column">
+    <button onclick="addTransaction('expense')">- Разход</button>
     <div id="expenseList"></div>
+    <canvas id="expenseChart" width="200" height="200"></canvas>
   </div>
 </div>
 
-<div class="container">
-  <div class="col analysis">
-    <h4>📊 Анализ Доходи / Бонуси</h4>
-    <div id="incomeAnalysis"></div>
-    <canvas id="chartIncome"></canvas>
-  </div>
-  <div class="col analysis">
-    <h4>📊 Анализ Разходи</h4>
-    <div id="expenseAnalysis"></div>
-    <canvas id="chartExpense"></canvas>
-  </div>
+<div style="margin-top:10px;">
+<label>Месец:</label>
+<select id="monthSelect" onchange="load()"></select>
 </div>
 
-<div class="summary" id="summary"></div>
+</div>
 
 <script>
-let data = JSON.parse(localStorage.getItem("data") || "[]");
-let chartIncome, chartExpense;
+const client = supabase.createClient(
+  "https://ipihscvyyxetkiajjllg.supabase.co",
+  "sb_publishable_r7Bgf2u5ZK30-DQVHPSHHQ_xgnsXY2x"
+);
 
-function getMonthOptions() {
-  let months = Array.from(new Set(data.map(t=>new Date(t.date).toLocaleString("bg-BG",{month:"long", year:"numeric"}))));
-  const sel = document.getElementById("filterMonth");
-  sel.innerHTML='<option value="all">Всички месеци</option>';
-  months.forEach(m=>sel.innerHTML += `<option value="${m}">${m}</option>`);
+let user, transactions=[], incomeChart=null, expenseChart=null;
+
+// Populate month selector
+const months = [...Array(12).keys()].map(i=>i+1);
+const monthSelect = document.getElementById('monthSelect');
+months.forEach(m=>{
+  let opt=document.createElement('option');
+  opt.value=m; opt.innerText=m;
+  monthSelect.appendChild(opt);
+});
+monthSelect.value = new Date().getMonth()+1;
+
+// Login function
+async function login(){
+  let email=document.getElementById("email").value;
+  let pass=document.getElementById("pass").value;
+
+  // SignIn or SignUp
+  let { data: loginData, error } = await client.auth.signInWithPassword({ email, password:pass });
+  if(error && error.message.includes("Invalid login")) {
+    let { data: signData, error: signErr } = await client.auth.signUp({ email, password:pass });
+    if(signErr){ alert(signErr.message); return; }
+    user = signData.user;
+    alert("Акаунт създаден! Натисни Login пак."); 
+    return;
+  } else if(error){ alert(error.message); return; }
+
+  user = loginData.user;
+  document.getElementById("loginDiv").style.display="none";
+  document.getElementById("app").style.display="block";
+  load();
 }
 
-function addTransaction(type){
-  let options = [];
-  if(type==="expense") options = ["храна","пазар","ток","вода"];
-  if(type==="income") options = ["заплата","помощи"];
-  if(type==="bonus") options = ["бонус","подарък","клиент"];
+// Add transaction
+async function addTransaction(type){
+  let name="", from="", method="", amount=0;
+  if(type==="bonus"){
+    name="Бонус";
+    from=prompt("От кого/клиент?");
+    method=prompt("Къде (банка/кеш/карта)?");
+    amount=parseFloat(prompt("Сума:"));
+  } else if(type==="income"){
+    name=prompt("Доход (заплата/помощи)?");
+    method=prompt("Къде (банка/кеш/карта)?");
+    amount=parseFloat(prompt("Сума:"));
+  } else {
+    name=prompt("За какво?");
+    method=prompt("Къде (банка/кеш/карта)?");
+    amount=parseFloat(prompt("Сума:"));
+    amount=-Math.abs(amount);
+  }
+  if(isNaN(amount)) return;
 
-  let name = prompt("За какво? (пример: "+options.join(", ")+")");
-  if(!name) return;
+  await client.from("transactions").insert({
+    user_id:user.id, type, name, from, method, amount, created_at:new Date().toISOString()
+  });
 
-  let fromWhom = "";
-  if(type==="bonus") fromWhom = prompt("От кого/обект/клиент?") || "-";
+  load();
+}
 
-  let method = prompt("От къде? (банка/карта/кеш)") || "-";
+// Load transactions
+async function load(){
+  const month = monthSelect.value;
+  let { data, error } = await client.from("transactions")
+    .select("*")
+    .eq("user_id", user.id)
+    .gte("created_at", new Date(new Date().getFullYear(), month-1, 1).toISOString())
+    .lt("created_at", new Date(new Date().getFullYear(), month, 1).toISOString());
 
-  let val = parseFloat(prompt("Колко?").replace(",", "."));
-  if(isNaN(val)) return;
-  if(type==="expense") val = -Math.abs(val);
-
-  let date = new Date().toISOString();
-
-  data.push({id:Date.now(), name, fromWhom, amount: val, method, type, date});
-  localStorage.setItem("data", JSON.stringify(data));
-  getMonthOptions();
+  transactions = data || [];
   render();
 }
 
+// Render
 function render(){
-  let sel = document.getElementById("filterMonth").value;
-  let filtered = sel==="all" ? data : data.filter(t=>new Date(t.date).toLocaleString("bg-BG",{month:"long", year:"numeric"})===sel);
+  let bal=0, incomeMap={}, expenseMap={}, bonusMap={};
 
-  let incomeDiv = document.getElementById("incomeList");
-  let expenseDiv = document.getElementById("expenseList");
-  let incomeAnal = document.getElementById("incomeAnalysis");
-  let expenseAnal = document.getElementById("expenseAnalysis");
-  let summaryDiv = document.getElementById("summary");
-
-  incomeDiv.innerHTML="";
-  expenseDiv.innerHTML="";
-  incomeAnal.innerHTML="";
-  expenseAnal.innerHTML="";
-  summaryDiv.innerHTML="";
-
-  let bal=0, incCats={}, expCats={};
-  let totalIncome=0, totalExpense=0, totalBonus=0;
-
-  filtered.forEach(t=>{
-    let a = Number(t.amount);
-    bal += a;
-
-    const div = document.createElement("div");
-    div.className = "card";
-
-    let label = t.name;
-    if(t.type==="bonus" && t.fromWhom) label += ` (${t.fromWhom})`;
-    label += ` (${t.method})`;
-    div.innerHTML = `<span>${label}</span>`;
-
-    const span = document.createElement("span");
-    span.textContent = `${a.toFixed(2)} € `;
-
-    const delBtn = document.createElement("button");
-    delBtn.textContent="❌";
-    delBtn.addEventListener("click",()=>{ del(t.id); });
-    span.appendChild(delBtn);
-    div.appendChild(span);
-
-    if(a>=0){
-      incomeDiv.appendChild(div);
-      if(t.type==="bonus") totalBonus+=a;
-      else totalIncome+=a;
-      if(!incCats[t.name]) incCats[t.name]=0;
-      incCats[t.name]+=a;
-    } else {
-      expenseDiv.appendChild(div);
-      totalExpense += Math.abs(a);
-      if(!expCats[t.name]) expCats[t.name]=0;
-      expCats[t.name]+=Math.abs(a);
-    }
+  transactions.forEach(t=>{
+    let key = t.name + " | " + (t.method||"");
+    if(t.type==="bonus"){ bonusMap[key]=(bonusMap[key]||0)+t.amount; }
+    else if(t.type==="income"){ incomeMap[key]=(incomeMap[key]||0)+t.amount; bal+=t.amount; }
+    else{ expenseMap[key]=(expenseMap[key]||0)+t.amount; bal+=t.amount; }
   });
 
   document.getElementById("balance").innerText = bal.toFixed(2)+" €";
 
-  for(let k in incCats){
-    let div = document.createElement("div");
-    div.textContent = `${k}: ${incCats[k].toFixed(2)} €`;
-    incomeAnal.appendChild(div);
-  }
-  for(let k in expCats){
-    let div = document.createElement("div");
-    div.textContent = `${k}: ${expCats[k].toFixed(2)} €`;
-    expenseAnal.appendChild(div);
-  }
+  renderList("incomeList", incomeMap);
+  renderList("expenseList", expenseMap);
+  renderList("incomeList", bonusMap, true);
 
-  summaryDiv.innerHTML=`Доходи: ${totalIncome.toFixed(2)} € | Бонуси: ${totalBonus.toFixed(2)} € | Разходи: ${totalExpense.toFixed(2)} €`;
-
-  drawChart("chartIncome", incCats, "green", chartIncome, c=>chartIncome=c);
-  drawChart("chartExpense", expCats, "red", chartExpense, c=>chartExpense=c);
+  renderChart("incomeChart", incomeMap, bonusMap, true);
+  renderChart("expenseChart", expenseMap, {}, false);
 }
 
-function del(id){
-  data = data.filter(t => t.id !== id);
-  localStorage.setItem("data", JSON.stringify(data));
-  getMonthOptions();
-  render();
+function renderList(id, map, isBonus=false){
+  const div=document.getElementById(id);
+  div.innerHTML="";
+  for(let k in map){
+    let row=document.createElement("div"); row.className="transaction";
+    row.innerText = k + ": " + map[k].toFixed(2)+" €";
+    div.appendChild(row);
+  }
 }
 
-function drawChart(canvasId, cats, color, chartVar, setChart){
-  const ctx=document.getElementById(canvasId);
-  if(chartVar) chartVar.destroy();
-
-  let labels=Object.keys(cats);
-  let values=Object.values(cats);
-
-  let newChart=new Chart(ctx,{
-    type:"bar",
-    data:{ labels, datasets:[{data:values, backgroundColor:color}] },
-    options:{ responsive:true, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}} }
+function renderChart(id, map1, map2={}, isIncome=true){
+  const labels = [...Object.keys(map1), ...Object.keys(map2)];
+  const data = [...Object.values(map1), ...Object.values(map2)];
+  const ctx=document.getElementById(id).getContext('2d');
+  if(id==="incomeChart" && incomeChart){ incomeChart.destroy(); }
+  if(id==="expenseChart" && expenseChart){ expenseChart.destroy(); }
+  const chart = new Chart(ctx, {
+    type: 'bar',
+    data: { labels, datasets:[{ label:isIncome?"Доход/Бонус":"Разход", data, backgroundColor:isIncome?"#22c55e":"#ef4444" }] },
+    options:{ responsive:true, plugins:{ legend:{ display:false } } }
   });
-
-  setChart(newChart);
+  if(isIncome) incomeChart=chart; else expenseChart=chart;
 }
 
-document.getElementById("btnIncome").addEventListener("click",()=>addTransaction("income"));
-document.getElementById("btnExpense").addEventListener("click",()=>addTransaction("expense"));
-document.getElementById("btnBonus").addEventListener("click",()=>addTransaction("bonus"));
-document.getElementById("filterMonth").addEventListener("change", render);
-
-getMonthOptions();
-render();
+// Initialize
+window.onload = async ()=>{
+  const { data } = await client.auth.getSession();
+  if(data.session){ user=data.session.user; document.getElementById("loginDiv").style.display="none"; document.getElementById("app").style.display="block"; load(); }
+};
 </script>
-
 </body>
 </html>
