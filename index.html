@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BudgetCloud_FINAL_v12</title>
+<title>BudgetCloud_FINAL_v13</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 <style>
 body { font-family:Arial; background:#0f172a; color:white; text-align:center; margin:0; padding:0; }
@@ -15,11 +15,12 @@ button { padding:4px 6px; margin:2px; border:none; border-radius:4px; cursor:poi
 .balance { font-size:22px; margin:10px; }
 .analysis { background:#020617; padding:10px; margin:5px 0; border-radius:10px; }
 canvas { margin-top:10px; }
+.summary { margin:5px; padding:5px; background:#1e293b; border-radius:5px; font-size:12px; display:flex; justify-content:space-around; }
 </style>
 </head>
 <body>
 
-<h3>💰 BudgetCloud_FINAL_v12</h3>
+<h3>💰 BudgetCloud_FINAL_v13</h3>
 <div class="balance" id="balance">0.00 €</div>
 
 <button id="btnIncome">+ Доход</button>
@@ -40,14 +41,18 @@ canvas { margin-top:10px; }
 
 <div class="container">
   <div class="col analysis">
-    <h4>📊 Доходи и Бонуси</h4>
+    <h4>📊 Анализ Доходи / Бонуси</h4>
+    <div id="incomeAnalysis"></div>
     <canvas id="chartIncome"></canvas>
   </div>
   <div class="col analysis">
-    <h4>📊 Разходи</h4>
+    <h4>📊 Анализ Разходи</h4>
+    <div id="expenseAnalysis"></div>
     <canvas id="chartExpense"></canvas>
   </div>
 </div>
+
+<div class="summary" id="summary"></div>
 
 <script>
 let data = JSON.parse(localStorage.getItem("data") || "[]");
@@ -57,7 +62,7 @@ function addTransaction(type){
   let options = [];
   if(type==="expense") options = ["храна","пазар","ток","вода"];
   if(type==="income") options = ["заплата","помощи"];
-  if(type==="bonus") options = ["заплата","подарък","клиент"];
+  if(type==="bonus") options = ["бонус","подарък","клиент"];
 
   let name = prompt("За какво? (пример: "+options.join(", ")+")");
   if(!name) return;
@@ -71,7 +76,7 @@ function addTransaction(type){
   if(isNaN(val)) return;
   if(type==="expense") val = -Math.abs(val);
 
-  // Връщаме текста на бонуси като заплата/подарък/клиент
+  // Връщаме текста на бонуси като „бонус/подарък/клиент“
   if(type==="bonus") name = name;
 
   data.push({id:Date.now(), name, fromWhom, amount: val, method, type});
@@ -82,10 +87,18 @@ function addTransaction(type){
 function render(){
   let incomeDiv = document.getElementById("incomeList");
   let expenseDiv = document.getElementById("expenseList");
+  let incomeAnal = document.getElementById("incomeAnalysis");
+  let expenseAnal = document.getElementById("expenseAnalysis");
+  let summaryDiv = document.getElementById("summary");
+
   incomeDiv.innerHTML="";
   expenseDiv.innerHTML="";
+  incomeAnal.innerHTML="";
+  expenseAnal.innerHTML="";
+  summaryDiv.innerHTML="";
 
   let bal=0, incCats={}, expCats={};
+  let totalIncome=0, totalExpense=0, totalBonus=0;
 
   data.forEach(t=>{
     let a = Number(t.amount);
@@ -110,16 +123,34 @@ function render(){
 
     if(a>=0){
       incomeDiv.appendChild(div);
+      if(t.type==="bonus") totalBonus+=a;
+      else totalIncome+=a;
       if(!incCats[t.name]) incCats[t.name]=0;
       incCats[t.name]+=a;
     } else {
       expenseDiv.appendChild(div);
+      totalExpense += Math.abs(a);
       if(!expCats[t.name]) expCats[t.name]=0;
       expCats[t.name]+=Math.abs(a);
     }
   });
 
   document.getElementById("balance").innerText = bal.toFixed(2)+" €";
+
+  // анализи текстово
+  for(let k in incCats){
+    let div = document.createElement("div");
+    div.textContent = `${k}: ${incCats[k].toFixed(2)} €`;
+    incomeAnal.appendChild(div);
+  }
+  for(let k in expCats){
+    let div = document.createElement("div");
+    div.textContent = `${k}: ${expCats[k].toFixed(2)} €`;
+    expenseAnal.appendChild(div);
+  }
+
+  // сумарен ред
+  summaryDiv.innerHTML=`Доходи: ${totalIncome.toFixed(2)} € | Бонуси: ${totalBonus.toFixed(2)} € | Разходи: ${totalExpense.toFixed(2)} €`;
 
   drawChart("chartIncome", incCats, "green", chartIncome, c=>chartIncome=c);
   drawChart("chartExpense", expCats, "red", chartExpense, c=>chartExpense=c);
