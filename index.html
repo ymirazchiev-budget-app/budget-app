@@ -3,260 +3,41 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BudgetCloud_HYBRID_FINAL_v1</title>
-
-<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
-<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<title>BudgetCloud_CLICK_FIXED_v1</title>
 
 <style>
 body { font-family:Arial; background:#0f172a; color:white; text-align:center; }
-button { padding:6px; margin:3px; border:none; border-radius:5px; cursor:pointer; }
-.card { background:#1e293b; margin:3px; padding:5px; border-radius:5px; font-size:13px; }
-.balance { font-size:24px; margin:10px; }
-.analysis { background:#020617; padding:10px; margin:10px; border-radius:10px; }
-
-@media print {
-  body { background:white; color:black; }
-  button { display:none; }
-}
+button { padding:10px; margin:5px; font-size:16px; cursor:pointer; }
 </style>
 </head>
 
 <body>
 
-<h3>💰 BudgetCloud_HYBRID_FINAL_v1</h3>
+<h2>💰 BudgetCloud_CLICK_FIXED_v1</h2>
 
-<div class="balance" id="balance">0.00 €</div>
-
-<button onclick="addIncome()">+ Доход</button>
-<button onclick="addExpense()">- Разход</button>
-<button onclick="addBonus()">💎 Бонус</button>
+<button id="btnIncome">+ Доход</button>
+<button id="btnExpense">- Разход</button>
+<button id="btnBonus">💎 Бонус</button>
 <button onclick="window.print()">🖨️ Печат</button>
 
-<div id="list"></div>
-
-<div class="analysis">
-  <b>📊 Разходи по категории</b>
-  <div id="analysis"></div>
-  <canvas id="chart"></canvas>
-</div>
-
 <script>
-const supabase = window.supabase.createClient(
-  "https://ipihscvyyxetkiajjllg.supabase.co",
-  "sb_publishable_r7Bgf2u5ZK30-DQVHPSHHQ_xgnsXY2x"
-);
 
-let user;
-let chart;
-
-// 🔥 START
-async function init(){
-
-  let { data } = await supabase.auth.getSession();
-
-  if(data.session){
-    user = data.session.user;
-  } else {
-    const res = await supabase.auth.signInWithPassword({
-      email: "u2m@mail.bg",
-      password: "Test9888"
-    });
-
-    if(!res.error){
-      user = res.data.user;
-    }
-  }
-
-  load();
-}
-
-// ➕ ДОХОД
-async function addIncome(){
+// 🔥 ГАРАНТИРАНО ЗАКАЧАНЕ НА БУТОНИТЕ
+document.getElementById("btnIncome").addEventListener("click", function(){
+  alert("Доход бутон работи");
   let name = prompt("Доход от?");
-  if(!name) return;
+});
 
-  let method = prompt("Средство (банка/карта/кеш)");
-  if(!method) method="-";
-
-  let val = parseFloat(prompt("Сума:").replace(",", "."));
-  if(isNaN(val)) return;
-
-  await save(name, val, method);
-}
-
-// ➖ РАЗХОД
-async function addExpense(){
+document.getElementById("btnExpense").addEventListener("click", function(){
+  alert("Разход бутон работи");
   let name = prompt("Разход за?");
-  if(!name) return;
+});
 
-  name = autoCategory(name);
+document.getElementById("btnBonus").addEventListener("click", function(){
+  alert("Бонус бутон работи");
+  let val = prompt("Бонус?");
+});
 
-  let method = prompt("Средство");
-  if(!method) method="-";
-
-  let val = -Math.abs(parseFloat(prompt("Сума:").replace(",", ".")));
-  if(isNaN(val)) return;
-
-  await save(name, val, method);
-}
-
-// 💎 БОНУС
-async function addBonus(){
-  let val = parseFloat(prompt("Бонус:").replace(",", "."));
-  if(isNaN(val)) return;
-
-  let method = prompt("Средство");
-  if(!method) method="-";
-
-  await save("бонус", val, method);
-}
-
-// 🔥 SAVE (HYBRID)
-async function save(name, amount, method){
-
-  let saved = false;
-
-  // опит за Supabase
-  if(user){
-    const { error } = await supabase.from("transactions").insert({
-      user_id: user.id,
-      name,
-      amount,
-      method,
-      created_at: new Date().toISOString()
-    });
-
-    if(!error){
-      saved = true;
-    }
-  }
-
-  // fallback localStorage
-  if(!saved){
-    let local = JSON.parse(localStorage.getItem("data") || "[]");
-
-    local.push({
-      id: Date.now(),
-      name,
-      amount,
-      method
-    });
-
-    localStorage.setItem("data", JSON.stringify(local));
-  }
-
-  load();
-}
-
-// 🔄 LOAD
-async function load(){
-
-  let data = [];
-
-  // от Supabase
-  if(user){
-    const res = await supabase
-      .from("transactions")
-      .select("*")
-      .eq("user_id", user.id)
-      .order("created_at", { ascending:true });
-
-    if(res.data && res.data.length){
-      data = res.data;
-    }
-  }
-
-  // fallback local
-  if(data.length === 0){
-    data = JSON.parse(localStorage.getItem("data") || "[]");
-  }
-
-  render(data);
-}
-
-// ❌ DELETE
-function del(id){
-  let local = JSON.parse(localStorage.getItem("data") || "[]");
-  local = local.filter(t => t.id != id);
-  localStorage.setItem("data", JSON.stringify(local));
-  load();
-}
-
-// 🎨 RENDER
-function render(data){
-
-  let bal=0;
-  let cats={};
-
-  const list = document.getElementById("list");
-  list.innerHTML="";
-
-  data.forEach(t=>{
-    let a = Number(t.amount);
-    bal += a;
-
-    if(a<0){
-      if(!cats[t.name]) cats[t.name]=0;
-      cats[t.name]+=Math.abs(a);
-    }
-
-    const div = document.createElement("div");
-    div.className="card";
-    div.innerHTML = `
-      ${t.name} (${t.method}) | ${a.toFixed(2)} €
-      <button onclick="del('${t.id}')">❌</button>
-    `;
-    list.appendChild(div);
-  });
-
-  document.getElementById("balance").innerText = bal.toFixed(2)+" €";
-
-  const aDiv = document.getElementById("analysis");
-  aDiv.innerHTML="";
-
-  let labels=[], values=[];
-
-  for(let c in cats){
-    labels.push(c);
-    values.push(cats[c]);
-
-    let p=document.createElement("div");
-    p.innerText = c + ": " + cats[c].toFixed(2)+" €";
-    aDiv.appendChild(p);
-  }
-
-  draw(labels, values);
-}
-
-// 📊 GRAPH
-function draw(labels, values){
-  const ctx = document.getElementById("chart");
-
-  if(chart) chart.destroy();
-
-  chart = new Chart(ctx,{
-    type:"bar",
-    data:{
-      labels,
-      datasets:[{
-        data:values,
-        backgroundColor:"#ef4444"
-      }]
-    }
-  });
-}
-
-// категории
-function autoCategory(name){
-  let n = name.toLowerCase();
-  if(n.includes("пица") || n.includes("храна")) return "храна";
-  if(n.includes("ток")) return "ток";
-  if(n.includes("пазар")) return "пазар";
-  return name;
-}
-
-init();
 </script>
 
 </body>
