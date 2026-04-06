@@ -3,49 +3,28 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BudgetCloud_ANALYTICS_v9</title>
-
+<title>BudgetCloud_FINAL_v10</title>
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
-
 <style>
 body { font-family:Arial; background:#0f172a; color:white; text-align:center; margin:0; padding:0; }
-
 button { padding:4px 6px; margin:2px; border:none; border-radius:4px; cursor:pointer; font-size:12px; }
-
 .container { display:flex; justify-content:center; gap:10px; flex-wrap:wrap; }
-
 .col { width:45%; min-width:250px; }
-
-.card {
-  background:#1e293b;
-  margin:2px;
-  padding:4px 6px;
-  border-radius:5px;
-  font-size:12px;
-  display:flex;
-  justify-content:space-between;
-  align-items:center;
-}
-
+.card { background:#1e293b; margin:2px; padding:4px 6px; border-radius:5px; font-size:12px; display:flex; justify-content:space-between; align-items:center; }
 .card button { padding:2px 4px; font-size:10px; }
-
 .balance { font-size:22px; margin:10px; }
-
 .analysis { background:#020617; padding:10px; margin:5px 0; border-radius:10px; }
-
 canvas { margin-top:10px; }
 </style>
 </head>
-
 <body>
 
-<h3>💰 BudgetCloud_ANALYTICS_v9</h3>
-
+<h3>💰 BudgetCloud_FINAL_v10</h3>
 <div class="balance" id="balance">0.00 €</div>
 
-<button onclick="flow('income')">+ Доход</button>
-<button onclick="flow('expense')">- Разход</button>
-<button onclick="flow('bonus')">💎 Бонус</button>
+<button id="btnIncome">+ Доход</button>
+<button id="btnExpense">- Разход</button>
+<button id="btnBonus">💎 Бонус</button>
 <button onclick="window.print()">🖨️ Печат</button>
 
 <div class="container">
@@ -53,14 +32,12 @@ canvas { margin-top:10px; }
     <h4>Доходи / Бонуси</h4>
     <div id="incomeList"></div>
   </div>
-
   <div class="col">
     <h4>Разходи</h4>
     <div id="expenseList"></div>
   </div>
 </div>
 
-<!-- Графики под колоните, една до друга -->
 <div class="container">
   <div class="col analysis">
     <h4>📊 Доходи и Бонуси</h4>
@@ -76,31 +53,96 @@ canvas { margin-top:10px; }
 let data = JSON.parse(localStorage.getItem("data") || "[]");
 let chartIncome, chartExpense;
 
-// FLOW
-function flow(type){
+function addTransaction(type){
   let options = [];
-
   if(type==="expense") options = ["храна","пазар","ток","вода"];
   if(type==="income") options = ["заплата","помощи"];
-  if(type==="bonus") options = ["бонус","подарък","клиент"];
+  if(type==="bonus") options = ["заплата","подарък","клиент"];
 
-  let name = prompt("Избери или напиши:\n" + options.join(", "));
+  let name = prompt("За какво? (пример: "+options.join(", ")+")");
   if(!name) return;
 
-  let method = prompt("Къде (банка/карта/кеш)?") || "-";
+  let method = prompt("От къде? (банка/карта/кеш)") || "-";
 
   let val = parseFloat(prompt("Колко?").replace(",", "."));
   if(isNaN(val)) return;
-
   if(type==="expense") val = -Math.abs(val);
 
-  data.push({
-    id: Date.now(),
-    name,
-    amount: val,
-    method,
-    type
+  data.push({id:Date.now(), name, amount: val, method, type});
+  localStorage.setItem("data", JSON.stringify(data));
+  render();
+}
+
+function render(){
+  let incomeDiv = document.getElementById("incomeList");
+  let expenseDiv = document.getElementById("expenseList");
+  incomeDiv.innerHTML="";
+  expenseDiv.innerHTML="";
+
+  let bal=0, incCats={}, expCats={};
+
+  data.forEach(t=>{
+    let a = Number(t.amount);
+    bal += a;
+
+    const div = document.createElement("div");
+    div.className = "card";
+    div.innerHTML = `<span>${t.name} (${t.method})</span>`;
+
+    const span = document.createElement("span");
+    span.textContent = `${a.toFixed(2)} € `;
+
+    const delBtn = document.createElement("button");
+    delBtn.textContent="❌";
+    delBtn.addEventListener("click",()=>{ del(t.id); });
+    span.appendChild(delBtn);
+    div.appendChild(span);
+
+    if(a>=0){
+      incomeDiv.appendChild(div);
+      if(!incCats[t.name]) incCats[t.name]=0;
+      incCats[t.name]+=a;
+    } else {
+      expenseDiv.appendChild(div);
+      if(!expCats[t.name]) expCats[t.name]=0;
+      expCats[t.name]+=Math.abs(a);
+    }
   });
 
+  document.getElementById("balance").innerText = bal.toFixed(2)+" €";
+
+  drawChart("chartIncome", incCats, "green", chartIncome, c=>chartIncome=c);
+  drawChart("chartExpense", expCats, "red", chartExpense, c=>chartExpense=c);
+}
+
+function del(id){
+  data = data.filter(t => t.id !== id);
   localStorage.setItem("data", JSON.stringify(data));
-  render
+  render();
+}
+
+function drawChart(canvasId, cats, color, chartVar, setChart){
+  const ctx=document.getElementById(canvasId);
+  if(chartVar) chartVar.destroy();
+
+  let labels=Object.keys(cats);
+  let values=Object.values(cats);
+
+  let newChart=new Chart(ctx,{
+    type:"bar",
+    data:{ labels, datasets:[{data:values, backgroundColor:color}] },
+    options:{ responsive:true, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}} }
+  });
+
+  setChart(newChart);
+}
+
+document.getElementById("btnIncome").addEventListener("click",()=>addTransaction("income"));
+document.getElementById("btnExpense").addEventListener("click",()=>addTransaction("expense"));
+document.getElementById("btnBonus").addEventListener("click",()=>addTransaction("bonus"));
+
+render();
+</script>
+
+</body>
+</html>
