@@ -3,14 +3,14 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BudgetCloud_FIXED_COLUMNS_v6</title>
+<title>BudgetCloud_REAL_STABLE_v7</title>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
 <style>
 body { font-family:Arial; background:#0f172a; color:white; text-align:center; }
 
-button { padding:6px; margin:3px; border:none; border-radius:5px; cursor:pointer; font-size:13px; }
+button { padding:6px; margin:3px; border:none; border-radius:5px; cursor:pointer; }
 
 .container {
   display:flex;
@@ -18,9 +18,7 @@ button { padding:6px; margin:3px; border:none; border-radius:5px; cursor:pointer
   gap:10px;
 }
 
-.col {
-  width:45%;
-}
+.col { width:45%; }
 
 .card {
   background:#1e293b;
@@ -34,24 +32,21 @@ button { padding:6px; margin:3px; border:none; border-radius:5px; cursor:pointer
 
 .balance { font-size:22px; margin:10px; }
 
-select { padding:5px; margin:5px; }
+.analysis { background:#020617; padding:10px; margin:10px; border-radius:10px; }
 
 </style>
 </head>
 
 <body>
 
-<h3>💰 BudgetCloud_FIXED_COLUMNS_v6</h3>
+<h3>💰 BudgetCloud_REAL_STABLE_v7</h3>
 
 <div class="balance" id="balance">0.00 €</div>
-
-<select id="monthFilter"></select>
-
-<br>
 
 <button onclick="flow('income')">+ Доход</button>
 <button onclick="flow('expense')">- Разход</button>
 <button onclick="flow('bonus')">💎 Бонус</button>
+<button onclick="window.print()">🖨️ Печат</button>
 
 <div class="container">
   <div class="col">
@@ -65,11 +60,18 @@ select { padding:5px; margin:5px; }
   </div>
 </div>
 
+<div class="analysis">
+  <b>📊 Разходи по категории</b>
+  <div id="analysis"></div>
+  <canvas id="chart"></canvas>
+</div>
+
 <script>
 
 let data = JSON.parse(localStorage.getItem("data") || "[]");
+let chart;
 
-// FLOW
+// FLOW (НЕ ПИПАМ ОСНОВАТА)
 function flow(type){
 
   let options = [];
@@ -102,7 +104,6 @@ function flow(type){
     name,
     amount: val,
     method,
-    date: new Date().toISOString(),
     type
   });
 
@@ -111,37 +112,8 @@ function flow(type){
   render();
 }
 
-// MONTHS
-function initMonths(){
-  let sel = document.getElementById("monthFilter");
-
-  let months = [...new Set(data.map(d => d.date.slice(0,7)))];
-
-  if(months.length === 0){
-    let now = new Date().toISOString().slice(0,7);
-    months = [now];
-  }
-
-  sel.innerHTML="";
-
-  months.sort().reverse().forEach(m=>{
-    let opt=document.createElement("option");
-    opt.value=m;
-    opt.textContent=m;
-    sel.appendChild(opt);
-  });
-
-  sel.onchange = render;
-}
-
-// RENDER
+// RENDER (СТАБИЛЕН)
 function render(){
-
-  initMonths();
-
-  let selected = document.getElementById("monthFilter").value;
-
-  let filtered = data.filter(d => d.date.startsWith(selected));
 
   let incomeDiv = document.getElementById("incomeList");
   let expenseDiv = document.getElementById("expenseList");
@@ -149,27 +121,70 @@ function render(){
   incomeDiv.innerHTML="";
   expenseDiv.innerHTML="";
 
-  let bal = 0;
+  let bal=0;
+  let cats={};
 
-  filtered.forEach(t=>{
+  data.forEach(t=>{
+
     let a = Number(t.amount);
     bal += a;
 
-    const div = document.createElement("div");
+    if(a<0){
+      if(!cats[t.name]) cats[t.name]=0;
+      cats[t.name]+=Math.abs(a);
+    }
+
+    const div=document.createElement("div");
     div.className="card";
-    div.innerHTML = `
+    div.innerHTML=`
       <span>${t.name} (${t.method})</span>
       <span>${a.toFixed(2)} €</span>
     `;
 
-    if(a >= 0){
+    if(a>=0){
       incomeDiv.appendChild(div);
     } else {
       expenseDiv.appendChild(div);
     }
+
   });
 
   document.getElementById("balance").innerText = bal.toFixed(2)+" €";
+
+  // анализ
+  let aDiv=document.getElementById("analysis");
+  aDiv.innerHTML="";
+
+  let labels=[], values=[];
+
+  for(let c in cats){
+    labels.push(c);
+    values.push(cats[c]);
+
+    let p=document.createElement("div");
+    p.innerText = c + ": " + cats[c].toFixed(2)+" €";
+    aDiv.appendChild(p);
+  }
+
+  draw(labels, values);
+}
+
+// GRAPH
+function draw(labels, values){
+  const ctx=document.getElementById("chart");
+
+  if(chart) chart.destroy();
+
+  chart=new Chart(ctx,{
+    type:"bar",
+    data:{
+      labels,
+      datasets:[{
+        data:values,
+        backgroundColor:"#ef4444"
+      }]
+    }
+  });
 }
 
 // START
