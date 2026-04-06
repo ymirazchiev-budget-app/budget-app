@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BudgetCloud_STABLE_WORKING_v3</title>
+<title>BudgetCloud_SMART_INPUT_v4</title>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
@@ -21,23 +21,26 @@ button { padding:6px; margin:3px; border:none; border-radius:5px; cursor:pointer
   max-width:400px;
   display:flex;
   justify-content:space-between;
-  align-items:center;
 }
 
 .balance { font-size:22px; margin:10px; }
 
 .analysis { background:#020617; padding:10px; margin:10px; border-radius:10px; }
 
-@media print {
-  body { background:white; color:black; }
-  button { display:none; }
+.selector {
+  margin:5px;
 }
+
+.selector button {
+  background:#334155;
+}
+
 </style>
 </head>
 
 <body>
 
-<h3>💰 BudgetCloud_STABLE_WORKING_v3</h3>
+<h3>💰 BudgetCloud_SMART_INPUT_v4</h3>
 
 <div class="balance" id="balance">0.00 €</div>
 
@@ -60,52 +63,49 @@ let data = JSON.parse(localStorage.getItem("data") || "[]");
 let chart;
 
 // BUTTONS
-document.getElementById("btnIncome").addEventListener("click", addIncome);
-document.getElementById("btnExpense").addEventListener("click", addExpense);
-document.getElementById("btnBonus").addEventListener("click", addBonus);
+document.getElementById("btnIncome").addEventListener("click", ()=>flow("income"));
+document.getElementById("btnExpense").addEventListener("click", ()=>flow("expense"));
+document.getElementById("btnBonus").addEventListener("click", ()=>flow("bonus"));
 
-// ➕ ДОХОД
-function addIncome(){
-  let name = prompt("От кого?");
-  if(!name) return;
+// 🔥 SMART FLOW
+function flow(type){
 
-  let method = prompt("Къде?");
-  if(!method) method="-";
+  let nameOptions = [];
+  let fromOptions = [];
 
-  let val = parseFloat(prompt("Колко?").replace(",", "."));
-  if(isNaN(val)) return;
+  if(type==="expense"){
+    nameOptions = ["храна","пазар","ток","вода","наем","гориво","забавление"];
+  } else {
+    nameOptions = ["заплата","бонус","подарък","възстановяване","клиент"];
+  }
 
-  save(name, val, method, "income");
-}
+  fromOptions = ["банка","карта","кеш"];
 
-// ➖ РАЗХОД
-function addExpense(){
-  let name = prompt("За какво?");
+  // 1. избор или ръчно
+  let name = prompt(
+    "Избери или напиши:\n\n" +
+    nameOptions.join(", ")
+  );
+
   if(!name) return;
 
   name = autoCategory(name);
 
-  let method = prompt("С какво?");
+  // 2. метод
+  let method = prompt(
+    "Къде?\n\n" +
+    fromOptions.join(", ")
+  );
+
   if(!method) method="-";
 
-  let val = -Math.abs(parseFloat(prompt("Колко?").replace(",", ".")));
-  if(isNaN(val)) return;
-
-  save(name, val, method, "expense");
-}
-
-// 💎 БОНУС (уеднаквен)
-function addBonus(){
-  let name = prompt("От кого?");
-  if(!name) return;
-
-  let method = prompt("Къде?");
-  if(!method) method="-";
-
+  // 3. сума
   let val = parseFloat(prompt("Колко?").replace(",", "."));
   if(isNaN(val)) return;
 
-  save(name, val, method, "bonus");
+  if(type==="expense") val = -Math.abs(val);
+
+  save(name, val, method, type);
 }
 
 // SAVE
@@ -139,7 +139,6 @@ function render(){
   const list = document.getElementById("list");
   list.innerHTML="";
 
-  // ОБЕДИНЯВАНЕ
   data.forEach(t=>{
     let key = t.name + "_" + t.method + "_" + t.type;
 
