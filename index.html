@@ -1,112 +1,29 @@
-// BudgetCloud_MinStable_v5
-import { createClient } from '@supabase/supabase-js'
-import Chart from 'chart.js/auto'
+<div class="buttons-row">
+  <button id="income-btn">Доход</button>
+  <button id="bonus-btn">Бонус</button>
+  <button id="expense-btn">Разход</button>
+</div>
 
-const supabaseUrl = 'https://YOUR_SUPABASE_URL.supabase.co'
-const supabaseKey = 'YOUR_SUPABASE_ANON_KEY'
-const supabase = createClient(supabaseUrl, supabaseKey)
+<div class="columns-row">
+  <div id="income-column" class="column"></div>
+  <div id="expense-column" class="column"></div>
+</div>
 
-let transactions = []
+<div class="analysis-row">
+  <div id="income-analysis"></div>
+  <div id="expense-analysis"></div>
+</div>
 
-// Elements
-const incomeColumn = document.getElementById('income-column')
-const expenseColumn = document.getElementById('expense-column')
-const incomeChartCanvas = document.getElementById('incomeChart')
-const expenseChartCanvas = document.getElementById('expenseChart')
-const monthSelect = document.getElementById('month-select')
+<div class="charts-row">
+  <canvas id="incomeChart" height="150"></canvas>
+  <canvas id="expenseChart" height="150"></canvas>
+</div>
 
-// Load transactions
-async function loadTransactions(month = null) {
-  let query = supabase.from('transactions').select('*')
-  if (month) query = query.eq('month', month)
-
-  const { data, error } = await query.order('created_at', { ascending: false })
-  if (error) return console.error(error)
-  transactions = data
-  renderTransactions()
-  renderCharts()
-  renderAnalysis()
-}
-
-// Render transactions
-function renderTransactions() {
-  incomeColumn.innerHTML = ''
-  expenseColumn.innerHTML = ''
-
-  transactions.forEach(t => {
-    const row = document.createElement('div')
-    row.className = 'transaction-row'
-    row.innerHTML = `
-      <span>${t.category}: ${t.amount.toFixed(2)} € (${t.method})</span>
-      <button onclick="deleteTransaction('${t.id}')">X</button>
-    `
-    if (t.amount >= 0 || t.type === 'bonus') incomeColumn.appendChild(row)
-    else expenseColumn.appendChild(row)
-  })
-}
-
-// Render analysis
-function renderAnalysis() {
-  const incomeSum = transactions.filter(t => t.amount > 0 || t.type === 'bonus').reduce((a,b)=>a+b.amount,0)
-  const expenseSum = transactions.filter(t => t.amount < 0).reduce((a,b)=>a+Math.abs(b.amount),0)
-
-  document.getElementById('income-analysis').innerText = `Доход + Бонус: ${incomeSum.toFixed(2)} €`
-  document.getElementById('expense-analysis').innerText = `Разход: ${expenseSum.toFixed(2)} €`
-}
-
-// Render charts
-function renderCharts() {
-  const incomeData = transactions.filter(t => t.amount > 0 || t.type==='bonus').map(t=>t.amount)
-  const expenseData = transactions.filter(t => t.amount < 0).map(t=>Math.abs(t.amount))
-
-  if (window.incomeChartInstance) window.incomeChartInstance.destroy()
-  if (window.expenseChartInstance) window.expenseChartInstance.destroy()
-
-  window.incomeChartInstance = new Chart(incomeChartCanvas, {
-    type: 'bar',
-    data: { labels: transactions.map(t=>t.category), datasets:[{label:'Доход', data:incomeData, backgroundColor:'green'}] },
-    options: { responsive:true, plugins:{legend:{display:false}}, maintainAspectRatio:false }
-  })
-
-  window.expenseChartInstance = new Chart(expenseChartCanvas, {
-    type: 'bar',
-    data: { labels: transactions.map(t=>t.category), datasets:[{label:'Разход', data:expenseData, backgroundColor:'red'}] },
-    options: { responsive:true, plugins:{legend:{display:false}}, maintainAspectRatio:false }
-  })
-}
-
-// Add transaction
-async function addTransaction(type) {
-  const category = prompt(type==='bonus'?'От кого/клиент':'Категория (пример: храна, ток)')
-  const method = prompt('Метод (банка, карта, кеш)')
-  const amount = parseFloat(prompt('Сума'))
-
-  if (!category || !method || isNaN(amount)) return alert('Въведете валидни данни!')
-
-  const { data, error } = await supabase.from('transactions').insert([{
-    category,
-    method,
-    amount: type==='expense'? -Math.abs(amount) : amount,
-    type,
-    month: new Date().getMonth()+1
-  }])
-
-  if (error) return console.error(error)
-  loadTransactions(monthSelect.value)
-}
-
-// Delete transaction
-async function deleteTransaction(id) {
-  const { error } = await supabase.from('transactions').delete().eq('id', id)
-  if (error) return console.error(error)
-  loadTransactions(monthSelect.value)
-}
-
-// Event listeners
-document.getElementById('income-btn').onclick = () => addTransaction('income')
-document.getElementById('expense-btn').onclick = () => addTransaction('expense')
-document.getElementById('bonus-btn').onclick = () => addTransaction('bonus')
-monthSelect.onchange = () => loadTransactions(monthSelect.value)
-
-// Initial load
-loadTransactions()
+<select id="month-select">
+  <option value="">Всички</option>
+  <option value="1">Януари</option>
+  <option value="2">Февруари</option>
+  <option value="3">Март</option>
+  <option value="4" selected>Април</option>
+  <!-- добави останалите -->
+</select>
