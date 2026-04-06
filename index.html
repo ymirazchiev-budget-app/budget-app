@@ -1,29 +1,159 @@
-<div class="buttons-row">
-  <button id="income-btn">Доход</button>
-  <button id="bonus-btn">Бонус</button>
-  <button id="expense-btn">Разход</button>
+<!DOCTYPE html>
+<html lang="bg">
+<head>
+<meta charset="UTF-8">
+<title>BudgetCloud_FinalStable_v1</title>
+<script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js"></script>
+<script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+<style>
+body { font-family: Arial; margin: 20px; }
+button { margin: 5px; }
+.row { display: flex; gap: 20px; }
+.column { flex: 1; }
+table { width: 100%; border-collapse: collapse; margin-top: 10px; }
+td, th { border: 1px solid #ccc; padding: 5px; text-align: left; }
+canvas { max-width: 100%; height: 200px; }
+</style>
+</head>
+<body>
+
+<h2>BudgetCloud_FinalStable_v1</h2>
+<div class="row">
+  <div class="column">
+    <button id="btnIncome">Доход</button>
+    <button id="btnBonus">Бонус</button>
+  </div>
+  <div class="column">
+    <button id="btnExpense">Разход</button>
+  </div>
 </div>
 
-<div class="columns-row">
-  <div id="income-column" class="column"></div>
-  <div id="expense-column" class="column"></div>
+<div class="row">
+  <div class="column">
+    <h3>Доход + Бонус</h3>
+    <table id="tableIncome"></table>
+    <canvas id="chartIncome"></canvas>
+    <div id="analysisIncome"></div>
+  </div>
+  <div class="column">
+    <h3>Разход</h3>
+    <table id="tableExpense"></table>
+    <canvas id="chartExpense"></canvas>
+    <div id="analysisExpense"></div>
+  </div>
 </div>
 
-<div class="analysis-row">
-  <div id="income-analysis"></div>
-  <div id="expense-analysis"></div>
-</div>
+<label>Месец: 
+  <select id="monthFilter"></select>
+</label>
 
-<div class="charts-row">
-  <canvas id="incomeChart" height="150"></canvas>
-  <canvas id="expenseChart" height="150"></canvas>
-</div>
+<script>
+const supabaseUrl = 'YOUR_SUPABASE_URL';
+const supabaseKey = 'YOUR_SUPABASE_ANON_KEY';
+const supabase = supabase.createClient(supabaseUrl, supabaseKey);
 
-<select id="month-select">
-  <option value="">Всички</option>
-  <option value="1">Януари</option>
-  <option value="2">Февруари</option>
-  <option value="3">Март</option>
-  <option value="4" selected>Април</option>
-  <!-- добави останалите -->
-</select>
+let transactions = [];
+
+async function fetchTransactions(month = null) {
+  let query = supabase.from('transactions').select('*');
+  if (month) query = query.eq('month', month);
+  let { data, error } = await query;
+  if (error) { console.log(error); return; }
+  transactions = data;
+  renderTables();
+  renderCharts();
+  renderAnalysis();
+}
+
+function renderTables() {
+  const tableIncome = document.getElementById('tableIncome');
+  const tableExpense = document.getElementById('tableExpense');
+  tableIncome.innerHTML = '';
+  tableExpense.innerHTML = '';
+
+  const incomeRows = transactions.filter(t => t.type === 'income' || t.type === 'bonus');
+  const expenseRows = transactions.filter(t => t.type === 'expense');
+
+  incomeRows.forEach(t => {
+    const row = tableIncome.insertRow();
+    row.insertCell(0).innerText = `${t.category} (${t.source})`;
+    row.insertCell(1).innerText = t.amount.toFixed(2) + ' €';
+    const del = row.insertCell(2);
+    const btn = document.createElement('button');
+    btn.innerText = 'X';
+    btn.onclick = () => deleteTransaction(t.id);
+    del.appendChild(btn);
+  });
+
+  expenseRows.forEach(t => {
+    const row = tableExpense.insertRow();
+    row.insertCell(0).innerText = `${t.category} (${t.source})`;
+    row.insertCell(1).innerText = t.amount.toFixed(2) + ' €';
+    const del = row.insertCell(2);
+    const btn = document.createElement('button');
+    btn.innerText = 'X';
+    btn.onclick = () => deleteTransaction(t.id);
+    del.appendChild(btn);
+  });
+}
+
+function renderAnalysis() {
+  const sumIncome = transactions.filter(t => t.type==='income' || t.type==='bonus').reduce((a,b)=>a+b.amount,0);
+  const sumExpense = transactions.filter(t => t.type==='expense').reduce((a,b)=>a+b.amount,0);
+  document.getElementById('analysisIncome').innerText = 'Сума доход + бонус: ' + sumIncome.toFixed(2) + ' €';
+  document.getElementById('analysisExpense').innerText = 'Сума разход: ' + sumExpense.toFixed(2) + ' €';
+}
+
+let chartIncome, chartExpense;
+function renderCharts() {
+  const ctxInc = document.getElementById('chartIncome').getContext('2d');
+  const ctxExp = document.getElementById('chartExpense').getContext('2d');
+
+  const incomeData = transactions.filter(t => t.type==='income' || t.type==='bonus')
+    .map(t => ({ label: t.category, value: t.amount }));
+  const expenseData = transactions.filter(t => t.type==='expense')
+    .map(t => ({ label: t.category, value: t.amount }));
+
+  if(chartIncome) chartIncome.destroy();
+  if(chartExpense) chartExpense.destroy();
+
+  chartIncome = new Chart(ctxInc, {
+    type:'bar',
+    data:{labels: incomeData.map(d=>d.label), datasets:[{label:'Доход + Бонус', data: incomeData.map(d=>d.value), backgroundColor:'green'}]}
+  });
+  chartExpense = new Chart(ctxExp, {
+    type:'bar',
+    data:{labels: expenseData.map(d=>d.label), datasets:[{label:'Разход', data: expenseData.map(d=>d.value), backgroundColor:'red'}]}
+  });
+}
+
+async function addTransaction(type) {
+  const category = prompt('Категория (пример: заплата, храна, ток):');
+  const source = prompt('От кой/къде (пример: банка, кеш, карта):');
+  const amount = parseFloat(prompt('Сума:'));
+  if(isNaN(amount)) return;
+
+  const month = new Date().getMonth()+1;
+  const { data, error } = await supabase.from('transactions').insert([{ type, category, source, amount, month }]);
+  if(error){ alert(error.message); return; }
+  fetchTransactions(document.getElementById('monthFilter').value);
+}
+
+async function deleteTransaction(id) {
+  await supabase.from('transactions').delete().eq('id', id);
+  fetchTransactions(document.getElementById('monthFilter').value);
+}
+
+document.getElementById('btnIncome').onclick = () => addTransaction('income');
+document.getElementById('btnBonus').onclick = () => addTransaction('bonus');
+document.getElementById('btnExpense').onclick = () => addTransaction('expense');
+
+const monthSelect = document.getElementById('monthFilter');
+for(let i=1;i<=12;i++){ const opt=document.createElement('option'); opt.value=i; opt.text=i; monthSelect.appendChild(opt);}
+monthSelect.onchange = () => fetchTransactions(monthSelect.value);
+
+fetchTransactions();
+</script>
+
+</body>
+</html>
