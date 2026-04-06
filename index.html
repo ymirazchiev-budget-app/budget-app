@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0">
-<title>BudgetCloud_REAL_STABLE_v7</title>
+<title>BudgetCloud_ANALYTICS_v8</title>
 
 <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
 
@@ -28,6 +28,7 @@ button { padding:6px; margin:3px; border:none; border-radius:5px; cursor:pointer
   font-size:12px;
   display:flex;
   justify-content:space-between;
+  align-items:center;
 }
 
 .balance { font-size:22px; margin:10px; }
@@ -39,7 +40,7 @@ button { padding:6px; margin:3px; border:none; border-radius:5px; cursor:pointer
 
 <body>
 
-<h3>💰 BudgetCloud_REAL_STABLE_v7</h3>
+<h3>💰 BudgetCloud_ANALYTICS_v8</h3>
 
 <div class="balance" id="balance">0.00 €</div>
 
@@ -61,17 +62,23 @@ button { padding:6px; margin:3px; border:none; border-radius:5px; cursor:pointer
 </div>
 
 <div class="analysis">
-  <b>📊 Разходи по категории</b>
-  <div id="analysis"></div>
-  <canvas id="chart"></canvas>
+  <h4>📊 Доходи и Бонуси</h4>
+  <div id="analysisIncome"></div>
+  <canvas id="chartIncome"></canvas>
+</div>
+
+<div class="analysis">
+  <h4>📊 Разходи</h4>
+  <div id="analysisExpense"></div>
+  <canvas id="chartExpense"></canvas>
 </div>
 
 <script>
 
 let data = JSON.parse(localStorage.getItem("data") || "[]");
-let chart;
+let chartIncome, chartExpense;
 
-// FLOW (НЕ ПИПАМ ОСНОВАТА)
+// FLOW
 function flow(type){
 
   let options = [];
@@ -91,7 +98,7 @@ function flow(type){
   let name = prompt("Избери или напиши:\n" + options.join(", "));
   if(!name) return;
 
-  let method = prompt("Къде?");
+  let method = prompt("Къде (банка/карта/кеш)?");
   if(!method) method="-";
 
   let val = parseFloat(prompt("Колко?").replace(",", "."));
@@ -108,11 +115,17 @@ function flow(type){
   });
 
   localStorage.setItem("data", JSON.stringify(data));
-
   render();
 }
 
-// RENDER (СТАБИЛЕН)
+// DELETE
+function del(id){
+  data = data.filter(t => t.id !== id);
+  localStorage.setItem("data", JSON.stringify(data));
+  render();
+}
+
+// RENDER
 function render(){
 
   let incomeDiv = document.getElementById("incomeList");
@@ -122,69 +135,77 @@ function render(){
   expenseDiv.innerHTML="";
 
   let bal=0;
-  let cats={};
+
+  let incCats={}, expCats={};
 
   data.forEach(t=>{
-
     let a = Number(t.amount);
     bal += a;
-
-    if(a<0){
-      if(!cats[t.name]) cats[t.name]=0;
-      cats[t.name]+=Math.abs(a);
-    }
 
     const div=document.createElement("div");
     div.className="card";
     div.innerHTML=`
       <span>${t.name} (${t.method})</span>
-      <span>${a.toFixed(2)} €</span>
+      <span>
+        ${a.toFixed(2)} €
+        <button onclick="del(${t.id})">❌</button>
+      </span>
     `;
 
     if(a>=0){
       incomeDiv.appendChild(div);
+      if(!incCats[t.name]) incCats[t.name]=0;
+      incCats[t.name]+=a;
     } else {
       expenseDiv.appendChild(div);
+      if(!expCats[t.name]) expCats[t.name]=0;
+      expCats[t.name]+=Math.abs(a);
     }
-
   });
 
   document.getElementById("balance").innerText = bal.toFixed(2)+" €";
 
-  // анализ
-  let aDiv=document.getElementById("analysis");
-  aDiv.innerHTML="";
+  renderAnalysis("analysisIncome", incCats);
+  renderAnalysis("analysisExpense", expCats);
 
-  let labels=[], values=[];
-
-  for(let c in cats){
-    labels.push(c);
-    values.push(cats[c]);
-
-    let p=document.createElement("div");
-    p.innerText = c + ": " + cats[c].toFixed(2)+" €";
-    aDiv.appendChild(p);
-  }
-
-  draw(labels, values);
+  drawChart("chartIncome", incCats, "green", chartIncome, c=>chartIncome=c);
+  drawChart("chartExpense", expCats, "red", chartExpense, c=>chartExpense=c);
 }
 
-// GRAPH
-function draw(labels, values){
-  const ctx=document.getElementById("chart");
+// ANALYSIS
+function renderAnalysis(id, cats){
+  let div=document.getElementById(id);
+  div.innerHTML="";
 
-  if(chart) chart.destroy();
+  for(let c in cats){
+    let p=document.createElement("div");
+    p.innerText = c + ": " + cats[c].toFixed(2)+" €";
+    div.appendChild(p);
+  }
+}
 
-  chart=new Chart(ctx,{
+// CHART
+function drawChart(canvasId, cats, color, chartVar, setChart){
+
+  const ctx=document.getElementById(canvasId);
+
+  if(chartVar) chartVar.destroy();
+
+  let labels=Object.keys(cats);
+  let values=Object.values(cats);
+
+  let newChart=new Chart(ctx,{
     type:"bar",
     data:{
       labels,
       datasets:[{
         data:values,
-        backgroundColor:"#ef4444"
+        backgroundColor:color
       }]
     }
   });
+
+  setChart(newChart);
 }
 
 // START
