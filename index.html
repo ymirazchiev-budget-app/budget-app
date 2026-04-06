@@ -10,16 +10,19 @@ input, select, button { padding:6px 8px; margin:2px; border-radius:4px; }
 button { cursor:pointer; min-width:70px; display:inline-block; }
 #app { display:none; margin-top:10px; }
 .row { display:flex; justify-content:center; gap:10px; flex-wrap:wrap; }
-.column { display:flex; flex-direction:column; gap:4px; width:180px; }
-.transaction { font-size:0.85em; padding:2px 0; border-bottom:1px solid #333; text-align:left; }
+.column { display:flex; flex-direction:column; gap:4px; width:220px; }
+.transaction { font-size:0.85em; padding:2px 0; border-bottom:1px solid #333; text-align:left; display:flex; justify-content:space-between; }
 h1,h2,h3 { margin:4px 0; }
-canvas { background:#1e293b; border-radius:8px; margin:5px 0; }
-.analysis { font-size:0.8em; text-align:left; margin-top:5px; }
+canvas { background:#1e293b; border-radius:8px; margin:5px 0; max-width:100%; }
+.analysis { font-size:0.8em; text-align:left; margin-top:5px; white-space: pre-line; }
+button.deleteBtn { background:#ef4444; color:white; padding:2px 6px; margin-left:4px; font-size:0.75em; border:none; border-radius:4px; cursor:pointer; }
+.buttonsRow { display:flex; justify-content:center; gap:4px; flex-wrap:wrap; margin-bottom:5px; }
+.flexRow { display:flex; justify-content:center; gap:10px; flex-wrap:wrap; }
 </style>
 </head>
 <body>
 
-<h2>💰 BudgetCloud_MinStable_v3</h2>
+<h2>💰 BudgetCloud_MinStable_v4</h2>
 
 <div id="loginDiv">
 <input id="email" placeholder="Email" value="u2m@mail.bg">
@@ -30,20 +33,28 @@ canvas { background:#1e293b; border-radius:8px; margin:5px 0; }
 <div id="app">
 <h1 id="balance">0 €</h1>
 
-<div class="row">
+<div class="buttonsRow">
+  <button onclick="addTransaction('income')">Доход</button>
+  <button onclick="addTransaction('bonus')">Бонус</button>
+  <button onclick="addTransaction('expense')">Разход</button>
+</div>
+
+<div class="flexRow">
   <div class="column">
-    <div>
-      <button onclick="addTransaction('income')">Доход</button>
-      <button onclick="addTransaction('bonus')">Бонус</button>
-      <button onclick="addTransaction('expense')">Разход</button>
-    </div>
+    <h3>Доход + Бонус</h3>
     <div id="incomeList"></div>
-    <canvas id="incomeChart" width="200" height="200"></canvas>
     <div id="incomeAnalysis" class="analysis"></div>
+  </div>
+  <div class="column">
+    <h3>Разход</h3>
     <div id="expenseList"></div>
-    <canvas id="expenseChart" width="200" height="200"></canvas>
     <div id="expenseAnalysis" class="analysis"></div>
   </div>
+</div>
+
+<div class="flexRow">
+  <canvas id="incomeChart" width="200" height="200"></canvas>
+  <canvas id="expenseChart" width="200" height="200"></canvas>
 </div>
 
 <div style="margin-top:10px;">
@@ -104,6 +115,11 @@ async function addTransaction(type){
   load();
 }
 
+async function deleteTransaction(id){
+  await client.from("transactions").delete().eq('id', id);
+  load();
+}
+
 async function load(){
   const month = monthSelect.value;
   let { data } = await client.from("transactions")
@@ -111,40 +127,40 @@ async function load(){
     .eq("user_id", user.id)
     .gte("created_at", new Date(new Date().getFullYear(), month-1, 1).toISOString())
     .lt("created_at", new Date(new Date().getFullYear(), month, 1).toISOString());
-
   transactions = data || [];
   render();
 }
 
 function render(){
   let bal=0, incomeMap={}, expenseMap={}, bonusMap={};
+  const incomeDiv = document.getElementById("incomeList");
+  const expenseDiv = document.getElementById("expenseList");
+  incomeDiv.innerHTML=""; expenseDiv.innerHTML="";
   transactions.forEach(t=>{
     let key = t.name + " | " + (t.method||"");
     if(t.type==="bonus"){ bonusMap[key]=(bonusMap[key]||0)+t.amount; bal+=t.amount; }
     else if(t.type==="income"){ incomeMap[key]=(incomeMap[key]||0)+t.amount; bal+=t.amount; }
     else{ expenseMap[key]=(expenseMap[key]||0)+t.amount; bal+=t.amount; }
+
+    const row=document.createElement("div"); row.className="transaction";
+    row.innerHTML=`${key}: ${t.amount.toFixed(2)} € <button class="deleteBtn" onclick="deleteTransaction('${t.id}')">X</button>`;
+    if(t.type==="income"||t.type==="bonus") incomeDiv.appendChild(row);
+    else expenseDiv.appendChild(row);
   });
-
   document.getElementById("balance").innerText = bal.toFixed(2)+" €";
-
-  renderList("incomeList", incomeMap);
-  renderList("incomeList", bonusMap, true);
-  renderList("expenseList", expenseMap);
-
-  renderChart("incomeChart", incomeMap, bonusMap, true);
-  renderChart("expenseChart", expenseMap, {}, false);
 
   renderAnalysis("incomeAnalysis", incomeMap, bonusMap);
   renderAnalysis("expenseAnalysis", expenseMap, {});
+
+  renderChart("incomeChart", incomeMap, bonusMap, true);
+  renderChart("expenseChart", expenseMap, {}, false);
 }
 
-function renderList(id, map, isBonus=false){
-  const div=document.getElementById(id); div.innerHTML="";
-  for(let k in map){
-    let row=document.createElement("div"); row.className="transaction";
-    row.innerText = k + ": " + map[k].toFixed(2)+" €";
-    div.appendChild(row);
-  }
+function renderAnalysis(id, map1, map2={}){
+  const div=document.getElementById(id);
+  div.innerHTML="";
+  for(let k in map1){ div.innerHTML+= k + ": " + map1[k].toFixed(2)+" €\n"; }
+  for(let k in map2){ div.innerHTML+= k + ": " + map2[k].toFixed(2)+" €\n"; }
 }
 
 function renderChart(id, map1, map2={}, isIncome=true){
@@ -159,13 +175,6 @@ function renderChart(id, map1, map2={}, isIncome=true){
     options:{ responsive:true, plugins:{ legend:{ display:false } } }
   });
   if(isIncome) incomeChart=chart; else expenseChart=chart;
-}
-
-function renderAnalysis(id, map1, map2={}){
-  const div=document.getElementById(id);
-  div.innerHTML="";
-  for(let k in map1){ div.innerHTML+= k + ": " + map1[k].toFixed(2)+" €\n"; }
-  for(let k in map2){ div.innerHTML+= k + ": " + map2[k].toFixed(2)+" €\n"; }
 }
 
 window.onload = async ()=>{
